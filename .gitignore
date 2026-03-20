@@ -1,0 +1,42 @@
+# Dependencias
+node_modules/
+
+# Variables de entorno — NUNCA commitear
+.env
+.env.local
+.env.*.local
+
+# Build
+dist/
+dist-ssr/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude Code / dev tools
+.claude/
+.playwright-mcp/
+
+# Archivos de debug/test temporales
+analysis-result.png
+create-env.js
+forgot-password-sent.png
+forgot-password.png
+interview-setup.png
+linkedin-blocked.png
+offer-saved.png
+test-api.js

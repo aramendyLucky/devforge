@@ -1,0 +1,68 @@
+/* ─── Sistema de temas DevForge ─────────────────────────────
+   Cambiando la clase en <html> cambia toda la app.
+   Tailwind apunta a estas variables → todo responde automáticamente.
+────────────────────────────────────────────────────────────── */
+
+/* ── FORGE DARK (default) ── carbón, ámbar, alto contraste ── */
+:root,
+.theme-forge {
+  --bg:          #0e0e0e;
+  --surface:     #161616;
+  --card:        #1c1c1c;
+  --border:      #2a2a2a;
+  --muted:       #3a3a3a;
+  --text:        #e8e8e8;
+  --subtle:      #888888;
+  --primary:     #f59e0b;
+  --primary-dim: #92400e;
+  --primary-fg:  #0e0e0e;
+  --accent:      #f97316;
+  --green:       #22c55e;
+  --red:         #ef4444;
+  --blue:        #3b82f6;
+  --tag-bg:      rgba(245,158,11,0.1);
+  --tag-text:    #f59e0b;
+  --bg-blur:     rgba(14,14,14,0.85);
+}
+
+/* ── CHALK & SAGE ── arena, tiza, verde suave, luz cálida ── */
+.theme-chalk {
+  --bg:          #F5F0E6;
+  --surface:     #FDFAF4;
+  --card:        #FFFFFF;
+  --border:      #E0D9CE;
+  --muted:       #C8BFB2;
+  --text:        #2E2A20;
+  --subtle:      #9A8F82;
+  --primary:     #6BAE8C;
+  --primary-dim: #EBF5EF;
+  --primary-fg:  #FFFFFF;
+  --accent:      #A8C5B0;
+  --green:       #4A8C6F;
+  --red:         #C0392B;
+  --blue:        #2980B9;
+  --tag-bg:      #EBF5EF;
+  --tag-text:    #4A8C6F;
+  --bg-blur:     rgba(245,240,230,0.88);
+}
+
+/* ── DUSK STONE ── carbón verdoso, musgo, arena oscura ── */
+.theme-dusk {
+  --bg:          #2C2E2B;
+  --surface:     #363830;
+  --card:        #3F4238;
+  --border:      #4A4D43;
+  --muted:       #5A5D52;
+  --text:        #E8E4DC;
+  --subtle:      #9A9B8E;
+  --primary:     #89B99A;
+  --primary-dim: #3A4A3C;
+  --primary-fg:  #1A1C19;
+  --accent:      #C4B99A;
+  --green:       #89B99A;
+  --red:         #C0694E;
+  --blue:        #7EA8C0;
+  --tag-bg:      #3A4A3C;
+  --tag-text:    #89B99A;
+  --bg-blur:     rgba(44,46,43,0.88);
+}

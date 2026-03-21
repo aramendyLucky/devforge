@@ -395,6 +395,35 @@ export async function saveOffer(userId, offer) {
 }
 
 
+// ─── updateOfferName ──────────────────────────────────────────────────────────
+/**
+ * Actualiza el nombre de una oferta guardada.
+ *
+ * ¿Por qué no modificar más campos acá?
+ * El resto de los campos (summary, topics) los genera la IA al analizar la oferta
+ * y no tienen sentido editarlos manualmente. Solo el nombre es personalizable por el usuario.
+ * Seguimos el patrón Repository del archivo: toda operación de DB pasa por acá.
+ *
+ * @param {string} userId   — UUID del usuario (segunda capa de seguridad además de RLS)
+ * @param {string} offerId  — UUID de la oferta a renombrar
+ * @param {string} newName  — Nuevo nombre ingresado por el usuario
+ * @returns {Promise<boolean>} — true si se guardó OK, false si falló
+ */
+export async function updateOfferName(userId, offerId, newName) {
+  const { error } = await supabase
+    .from('saved_offers')
+    .update({ name: newName })
+    .eq('id',      offerId)
+    .eq('user_id', userId)   // doble filtro: solo puede editar sus propias ofertas
+
+  if (error) {
+    console.error('[DevForge] Error actualizando nombre de oferta:', error)
+    return false
+  }
+  return true
+}
+
+
 // ─── deleteOffer ──────────────────────────────────────────────────────────────
 /**
  * Elimina una oferta guardada del usuario.

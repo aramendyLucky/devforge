@@ -23,9 +23,10 @@
  *   'devforge_saved_offers' → Array<{ id, name, summary, topics, savedAt }>
  */
 
-import { useState, useRef, useCallback, useEffect } from 'react'
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { useStore } from '../store/index.jsx'
 import { TOPICS } from '../data/topics.js'
 import { getQuestions } from '../data/questions.js'
 import { useAI } from '../hooks/useAI.js'
@@ -37,9 +38,10 @@ import {
   BLOCKED_SITES_INFO,
 } from '../lib/fileParser.js'
 import {
-  loadOffers as dbLoadOffers,
-  saveOffer  as dbSaveOffer,
-  deleteOffer as dbDeleteOffer,
+  loadOffers      as dbLoadOffers,
+  saveOffer       as dbSaveOffer,
+  deleteOffer     as dbDeleteOffer,
+  updateOfferName as dbUpdateOfferName,  // ← FASE 3: renombrado inline de ofertas
 } from '../lib/db.js'
 import { supabase } from '../lib/supabase.js'
 import Header from '../components/ui/Header.jsx'
@@ -87,6 +89,79 @@ const TIER_META = {
   1: { labelKey: 'common.tier1', color: 'var(--red)',     bg: 'color-mix(in srgb, var(--red) 8%, transparent)'     },
   2: { labelKey: 'common.tier2', color: 'var(--primary)', bg: 'color-mix(in srgb, var(--primary) 8%, transparent)' },
   3: { labelKey: 'common.tier3', color: 'var(--subtle)',  bg: 'transparent'                                        },
+}
+
+// ─── useOfferMeta ─────────────────────────────────────────────────────────
+/**
+ * Hook de metadatos de oferta almacenados en localStorage.
+ *
+ * ¿Por qué localStorage y no Supabase?
+ * Status (activa/aplicada/etc.) y pins son preferencias personales del dispositivo,
+ * no datos de negocio. No vale la pena una migración de DB para esto.
+ * Si el usuario cambia de dispositivo, empieza limpio — lo cual es aceptable.
+ *
+ * Claves utilizadas:
+ *   devforge_offer_status → { [offerId]: 'active'|'applied'|'in_progress'|'discarded' }
+ *   devforge_offer_pins   → { [offerId]: true }
+ *
+ * ¿Por qué dos claves separadas?
+ * Modelos independientes: un pin no tiene relación con el estado de la oferta.
+ * Permite limpiar uno sin afectar el otro (ej: "borrar todos los pins").
+ */
+function useOfferMeta() {
+  // Leemos del localStorage al iniciar — si está vacío, usamos {} como default
+  const [statusMap, setStatusMap] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('devforge_offer_status') || '{}') }
+    catch { return {} }
+  })
+  const [pinMap, setPinMap] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('devforge_offer_pins') || '{}') }
+    catch { return {} }
+  })
+
+  /** Retorna el estado de una oferta. Default: 'active' si nunca se configuró. */
+  function getStatus(id) { return statusMap[id] || 'active' }
+
+  /**
+   * Cambia el estado de una oferta y lo persiste en localStorage.
+   * @param {string} id     — UUID de la oferta
+   * @param {string} status — 'active' | 'applied' | 'in_progress' | 'discarded'
+   */
+  function setStatus(id, status) {
+    const next = { ...statusMap, [id]: status }
+    setStatusMap(next)
+    localStorage.setItem('devforge_offer_status', JSON.stringify(next))
+  }
+
+  /** Retorna true si la oferta está fijada arriba. */
+  function isPinned(id) { return !!pinMap[id] }
+
+  /** Alterna el pin de una oferta. Las fijadas flotan al tope de la lista. */
+  function togglePin(id) {
+    const next = { ...pinMap }
+    if (next[id]) { delete next[id] } else { next[id] = true }
+    setPinMap(next)
+    localStorage.setItem('devforge_offer_pins', JSON.stringify(next))
+  }
+
+  /**
+   * Limpia los metadatos huérfanos de una oferta eliminada.
+   * Se llama desde el handler de delete para evitar que el localStorage crezca
+   * indefinidamente con IDs de ofertas que ya no existen.
+   * @param {string} id — UUID de la oferta eliminada
+   */
+  function cleanMeta(id) {
+    const nextStatus = { ...statusMap }
+    const nextPins   = { ...pinMap }
+    delete nextStatus[id]
+    delete nextPins[id]
+    setStatusMap(nextStatus)
+    setPinMap(nextPins)
+    localStorage.setItem('devforge_offer_status', JSON.stringify(nextStatus))
+    localStorage.setItem('devforge_offer_pins',   JSON.stringify(nextPins))
+  }
+
+  return { getStatus, setStatus, isPinned, togglePin, cleanMeta, pinMap }
 }
 
 // ─── useSavedOffers ───────────────────────────────────────────────────────
@@ -152,7 +227,33 @@ function useSavedOffers() {
     setOffers(prev => prev.filter(o => o.id !== id))
   }, [])
 
-  return { offers, loading, saveOffer, deleteOffer }
+  /**
+   * Renombra una oferta en Supabase y actualiza el estado local de forma optimista.
+   * "Optimista" = actualizamos la UI primero y revertimos si falla.
+   *
+   * ¿Por qué optimista?
+   * Elimina el lag visual: el nombre cambia al instante en lugar de esperar la DB.
+   * Si Supabase falla (raro), el usuario ve que volvió el nombre anterior — señal clara.
+   *
+   * @param {string} id      — UUID de la oferta a renombrar
+   * @param {string} newName — Nuevo nombre (ya trimmed por el caller)
+   */
+  const updateOfferName = useCallback(async (id, newName) => {
+    // Actualización optimista: cambiamos el nombre localmente antes de ir a DB
+    const prev = offers.find(o => o.id === id)
+    setOffers(curr => curr.map(o => o.id === id ? { ...o, name: newName } : o))
+
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) { setOffers(curr => curr.map(o => o.id === id ? { ...o, name: prev?.name } : o)); return }
+
+    const ok = await dbUpdateOfferName(user.id, id, newName)
+    if (!ok && prev) {
+      // Revertimos al nombre anterior si Supabase falló
+      setOffers(curr => curr.map(o => o.id === id ? { ...o, name: prev.name } : o))
+    }
+  }, [offers])
+
+  return { offers, loading, saveOffer, deleteOffer, updateOfferName }
 }
 
 // ─── SkillsBreakdown ──────────────────────────────────────────────────────
@@ -579,15 +680,123 @@ function Divider({ children }) {
 
 // ─── InterviewSetup principal ─────────────────────────────────────────────
 export default function InterviewSetup() {
-  const { t }    = useTranslation()
-  const navigate = useNavigate()
-  const { offers: savedOffers, loading: offersLoading, saveOffer, deleteOffer } = useSavedOffers()
+  const { t }       = useTranslation()
+  const navigate    = useNavigate()
+  const { state }   = useStore()   // ← para acceder a state.interviews y calcular uso de ofertas
 
+  // ── Hooks de ofertas ─────────────────────────────────────────────────────
+  const { offers: savedOffers, loading: offersLoading, saveOffer, deleteOffer, updateOfferName } = useSavedOffers()
+  const { getStatus, setStatus, isPinned, togglePin, cleanMeta, pinMap } = useOfferMeta()
+
+  // ── Estado base ──────────────────────────────────────────────────────────
   const [duration,      setDuration]      = useState(45)
   const [difficulty,    setDifficulty]    = useState('mixed')
   const [selectedId,    setSelectedId]    = useState('fullstack')   // preset ID seleccionado
   const [customTopics,  setCustomTopics]  = useState([])
   const [showAnalysis,  setShowAnalysis]  = useState(false)
+
+  // ── Estado FASE 3: búsqueda, orden, edición inline, confirmación delete ──
+  const [offerSearch,     setOfferSearch]     = useState('')           // filtro texto libre
+  const [offerSort,       setOfferSort]       = useState('date')       // 'date' | 'name' | 'stack'
+  const [editingOfferId,  setEditingOfferId]  = useState(null)         // UUID de la oferta en edición
+  const [editingName,     setEditingName]     = useState('')           // nombre temporal durante edición
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null)        // UUID de oferta con confirm visible
+
+  // ── Estadísticas de uso por oferta ──────────────────────────────────────
+  /**
+   * Calcula cuántas entrevistas simuladas se hicieron con cada oferta.
+   * Estrategia: si una entrevista tiene al menos un topic que también tiene la oferta,
+   * la contamos como "usada con esa oferta".
+   *
+   * ¿Por qué useMemo?
+   * state.interviews puede tener muchas entradas. Cruzarlas contra savedOffers
+   * en cada render sería costoso. useMemo solo recalcula cuando cambia interviews o savedOffers.
+   *
+   * @returns {Object} — { [offerId]: number }
+   */
+  const interviewCountByOffer = useMemo(() => {
+    const interviews = state.interviews || []
+    const result = {}
+    for (const offer of savedOffers) {
+      const offerTopicIds = new Set((offer.topics || []).map(tp => tp.id))
+      result[offer.id] = interviews.filter(iv =>
+        (iv.topicIds || []).some(tid => offerTopicIds.has(tid))
+      ).length
+    }
+    return result
+  }, [savedOffers, state.interviews])
+
+  // ── Lista filtrada + ordenada de ofertas (FASE 3) ────────────────────────
+  /**
+   * displayedOffers — la lista que se renderiza en pantalla.
+   *
+   * Orden de operaciones:
+   *   1. Filtrado por texto libre (nombre + summary + topics)
+   *   2. Ordenado por el criterio elegido (fecha / nombre / stack size)
+   *   3. Los fijados (pinned) siempre flotan al tope — aplicado al final
+   *
+   * ¿Por qué el pin sort es el último?
+   * Si aplicamos el pin antes del sort por nombre, los fijados podrían
+   * quedar intercalados con los no fijados dentro del mismo criterio.
+   * Al aplicar pin al final, los fijados siempre están arriba, ordenados
+   * entre sí por el criterio elegido, y los no fijados debajo también ordenados.
+   */
+  const displayedOffers = useMemo(() => {
+    let list = [...savedOffers]
+
+    // 1. Filtro por texto libre — busca en nombre, resumen y topics
+    if (offerSearch.trim()) {
+      const q = offerSearch.toLowerCase().trim()
+      list = list.filter(o =>
+        o.name.toLowerCase().includes(q) ||
+        (o.summary || '').toLowerCase().includes(q) ||
+        (o.topics  || []).some(tp => tp.name.toLowerCase().includes(q))
+      )
+    }
+
+    // 2. Ordenado por criterio — 'date' ya viene ordenado desde Supabase (DESC)
+    if (offerSort === 'name') {
+      list.sort((a, b) => a.name.localeCompare(b.name))
+    } else if (offerSort === 'stack') {
+      // Stack size: más topics = más cobertura técnica → aparece primero
+      list.sort((a, b) => (b.topics?.length || 0) - (a.topics?.length || 0))
+    }
+
+    // 3. Pins al tope — siempre después del sort para mantener consistencia
+    list.sort((a, b) => {
+      const pa = isPinned(a.id) ? 1 : 0
+      const pb = isPinned(b.id) ? 1 : 0
+      return pb - pa
+    })
+
+    return list
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [savedOffers, offerSearch, offerSort, pinMap])
+
+  // ── Edición inline de nombre ─────────────────────────────────────────────
+  /** Inicia la edición de nombre para una oferta */
+  function startEdit(offer, e) {
+    e.stopPropagation()
+    setEditingOfferId(offer.id)
+    setEditingName(offer.name)
+  }
+
+  /** Confirma el nuevo nombre: persiste en Supabase y limpia el estado de edición */
+  async function commitEdit(e) {
+    e?.preventDefault?.()
+    const trimmed = editingName.trim()
+    if (trimmed && trimmed !== savedOffers.find(o => o.id === editingOfferId)?.name) {
+      await updateOfferName(editingOfferId, trimmed)
+    }
+    setEditingOfferId(null)
+    setEditingName('')
+  }
+
+  /** Cancela la edición sin guardar */
+  function cancelEdit() {
+    setEditingOfferId(null)
+    setEditingName('')
+  }
 
   // ── Resolver topics activos según el perfil seleccionado ────────────────
   function getActiveTopics() {
@@ -729,7 +938,9 @@ export default function InterviewSetup() {
         </div>
 
         {/* ─── SECCIÓN B: Mis ofertas guardadas ─── */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+
+        {/* ── Header de sección: título + contador ── */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: savedOffers.length > 0 ? 8 : 10 }}>
           <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--subtle)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
             {t('interview.savedOffers')}
           </div>
@@ -738,58 +949,272 @@ export default function InterviewSetup() {
           </span>
         </div>
 
+        {/* ── Toolbar: búsqueda + orden — solo visible si hay ofertas ──
+            Busca en tiempo real en nombre, summary y topics de cada oferta.
+            El sort complementa la búsqueda: dentro de los resultados filtrados,
+            se puede ordenar por fecha / nombre alfabético / tamaño del stack. */}
+        {!offersLoading && savedOffers.length > 0 && (
+          <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+            {/* Campo de búsqueda */}
+            <input
+              type="text"
+              value={offerSearch}
+              onChange={e => setOfferSearch(e.target.value)}
+              placeholder={t('interview.searchPlaceholder')}
+              style={{
+                flex: 1, padding: '6px 10px',
+                background: 'var(--surface)', border: '1px solid var(--border)',
+                color: 'var(--text)', fontFamily: 'Space Mono, monospace', fontSize: 10,
+                outline: 'none',
+              }}
+              onFocus={e  => e.target.style.borderColor = 'var(--primary)'}
+              onBlur={e   => e.target.style.borderColor = 'var(--border)'}
+            />
+            {/* Selector de orden */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--subtle)', whiteSpace: 'nowrap' }}>
+                {t('interview.sortLabel')}
+              </span>
+              <select
+                value={offerSort}
+                onChange={e => setOfferSort(e.target.value)}
+                style={{
+                  padding: '5px 6px',
+                  background: 'var(--surface)', border: '1px solid var(--border)',
+                  color: 'var(--text)', fontFamily: 'Space Mono, monospace', fontSize: 10,
+                  cursor: 'pointer', outline: 'none',
+                }}
+              >
+                <option value="date">{t('interview.sortDate')}</option>
+                <option value="name">{t('interview.sortName')}</option>
+                <option value="stack">{t('interview.sortStack')}</option>
+              </select>
+            </div>
+          </div>
+        )}
+
+        {/* ── Lista de ofertas ── */}
         {offersLoading ? (
           <div style={{ padding: '12px 14px', background: 'var(--card)', border: '1px dashed var(--border)', fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)', textAlign: 'center', marginBottom: 10 }}>
             {t('interview.loadingOffers')}
           </div>
-        ) : savedOffers.length > 0 ? (
+
+        ) : savedOffers.length === 0 ? (
+          <div style={{ padding: '12px 14px', background: 'var(--card)', border: '1px dashed var(--border)', fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)', textAlign: 'center', marginBottom: 10 }}>
+            {t('interview.noSavedOffers')}
+          </div>
+
+        ) : displayedOffers.length === 0 ? (
+          /* Sin resultados de búsqueda — mensaje claro con la query usada */
+          <div style={{ padding: '12px 14px', background: 'var(--card)', border: '1px dashed var(--border)', fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)', textAlign: 'center', marginBottom: 10 }}>
+            {t('interview.noSearchResults', { query: offerSearch })}
+          </div>
+
+        ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
-            {savedOffers.map(offer => {
-              const sel = selectedId === offer.id
-              const covered = (offer.topics || []).filter(t => TOPICS.some(x => x.id === t.id))
+            {displayedOffers.map(offer => {
+              const sel      = selectedId === offer.id
+              const pinned   = isPinned(offer.id)
+              const status   = getStatus(offer.id)
+              const useCount = interviewCountByOffer[offer.id] ?? 0
+              const covered  = (offer.topics || []).filter(tp => TOPICS.some(x => x.id === tp.id))
+              const isEditing = editingOfferId === offer.id
+              const isConfirmingDelete = confirmDeleteId === offer.id
+
+              // Mapa de colores por estado — verde/ámbar/azul/rojo
+              const STATUS_COLORS = {
+                active:      { color: 'var(--green)',   bg: 'color-mix(in srgb, var(--green) 10%, transparent)'   },
+                applied:     { color: 'var(--primary)', bg: 'color-mix(in srgb, var(--primary) 10%, transparent)' },
+                in_progress: { color: '#60a5fa',        bg: 'rgba(96,165,250,0.1)'                                },
+                discarded:   { color: 'var(--red)',     bg: 'color-mix(in srgb, var(--red) 10%, transparent)'     },
+              }
+              const statusStyle = STATUS_COLORS[status] || STATUS_COLORS.active
+
               return (
-                <div key={offer.id} onClick={() => { setSelectedId(offer.id); setShowAnalysis(false) }}
-                  style={{ ...CARD(sel), position: 'relative' }}
+                <div
+                  key={offer.id}
+                  onClick={() => {
+                    if (isEditing || isConfirmingDelete) return  // no seleccionar mientras se edita/confirma
+                    setSelectedId(offer.id)
+                    setShowAnalysis(false)
+                  }}
+                  style={{
+                    ...CARD(sel),
+                    position: 'relative',
+                    // Las fijadas tienen borde izquierdo dorado como indicador visual
+                    borderLeft: pinned ? '3px solid var(--primary)' : `2px solid ${sel ? 'var(--primary)' : 'var(--border)'}`,
+                    flexDirection: 'column',
+                    alignItems: 'stretch',
+                    gap: 0,
+                    padding: 0,
+                  }}
                 >
-                  <span style={{ fontSize: 18, flexShrink: 0 }}>📋</span>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: 13, color: sel ? 'var(--primary)' : 'var(--text)', marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {offer.name}
+                  {/* ── Fila principal de la card ── */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px' }}>
+                    {/* Ícono + pin indicator */}
+                    <span style={{ fontSize: 16, flexShrink: 0, opacity: pinned ? 1 : 0.6 }}>
+                      {pinned ? '📌' : '📋'}
+                    </span>
+
+                    {/* Contenido central — nombre (editable) + summary + stats */}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+
+                      {/* Nombre — inline edit o texto estático */}
+                      {isEditing ? (
+                        <form onSubmit={commitEdit} style={{ display: 'flex', gap: 4, marginBottom: 2 }}>
+                          <input
+                            autoFocus
+                            type="text"
+                            value={editingName}
+                            onChange={e => setEditingName(e.target.value)}
+                            onKeyDown={e => e.key === 'Escape' && cancelEdit()}
+                            placeholder={t('interview.editNamePlaceholder')}
+                            onClick={e => e.stopPropagation()}
+                            style={{
+                              flex: 1, padding: '3px 6px',
+                              background: 'var(--bg)', border: '1px solid var(--primary)',
+                              color: 'var(--text)', fontFamily: 'Syne, sans-serif',
+                              fontWeight: 700, fontSize: 12, outline: 'none',
+                            }}
+                          />
+                          <button type="submit" onClick={e => e.stopPropagation()}
+                            style={{ padding: '3px 7px', background: 'var(--primary)', border: 'none', color: 'var(--bg)', cursor: 'pointer', fontSize: 10, fontWeight: 700 }}>
+                            ✓
+                          </button>
+                          <button type="button" onClick={e => { e.stopPropagation(); cancelEdit() }}
+                            style={{ padding: '3px 7px', background: 'var(--card)', border: '1px solid var(--border)', color: 'var(--subtle)', cursor: 'pointer', fontSize: 10 }}>
+                            ✕
+                          </button>
+                        </form>
+                      ) : (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                          <div style={{ fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: 13, color: sel ? 'var(--primary)' : 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                            {offer.name}
+                          </div>
+                          {/* Badge de estado — clickeable para cambiar */}
+                          <select
+                            value={status}
+                            onClick={e => e.stopPropagation()}
+                            onChange={e => { e.stopPropagation(); setStatus(offer.id, e.target.value) }}
+                            style={{
+                              padding: '1px 4px', border: 'none',
+                              background: statusStyle.bg, color: statusStyle.color,
+                              fontFamily: 'Space Mono, monospace', fontSize: 8, fontWeight: 700,
+                              cursor: 'pointer', flexShrink: 0, outline: 'none',
+                            }}
+                          >
+                            <option value="active">{t('interview.statusActive')}</option>
+                            <option value="applied">{t('interview.statusApplied')}</option>
+                            <option value="in_progress">{t('interview.statusInProgress')}</option>
+                            <option value="discarded">{t('interview.statusDiscarded')}</option>
+                          </select>
+                        </div>
+                      )}
+
+                      {/* Summary — truncado */}
+                      {!isEditing && (
+                        <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--subtle)', marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {offer.summary}
+                        </div>
+                      )}
+
+                      {/* Stats: cobertura + fecha + uso en entrevistas */}
+                      {!isEditing && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                          <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 8, color: covered.length > 0 ? 'var(--primary)' : 'var(--subtle)' }}>
+                            {t('interview.skillsInDevForge', { covered: covered.length, total: offer.topics?.length || 0 })}
+                          </span>
+                          <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 8, color: 'var(--subtle)' }}>
+                            {new Date(offer.savedAt).toLocaleDateString(undefined, { day: '2-digit', month: 'short' })}
+                          </span>
+                          {/* Contador de entrevistas simuladas con esta oferta */}
+                          <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 8, color: useCount > 0 ? 'var(--green)' : 'var(--muted)' }}>
+                            {t('interview.usedInInterviews', { count: useCount })}
+                          </span>
+                        </div>
+                      )}
                     </div>
-                    <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--subtle)', marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {offer.summary}
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 8, color: covered.length > 0 ? 'var(--primary)' : 'var(--subtle)' }}>
-                        {covered.length}/{offer.topics?.length || 0} skills en DevForge
-                      </span>
-                      <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 8, color: 'var(--subtle)' }}>
-                        {new Date(offer.savedAt).toLocaleDateString('es-AR', { day: '2-digit', month: 'short' })}
-                      </span>
+
+                    {/* ── Acciones: checkmark selección + pin + editar + borrar ── */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
+                      {sel && !isEditing && (
+                        <span style={{ color: 'var(--primary)', fontSize: 12, marginRight: 4 }}>✓</span>
+                      )}
+
+                      {/* Botón fijar/desfijar — flota la oferta al tope de la lista */}
+                      <button
+                        onClick={e => { e.stopPropagation(); togglePin(offer.id) }}
+                        title={pinned ? t('interview.unpinOffer') : t('interview.pinOffer')}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, padding: '2px 3px', color: pinned ? 'var(--primary)' : 'var(--subtle)', lineHeight: 1 }}
+                        onMouseEnter={e => e.currentTarget.style.color = 'var(--primary)'}
+                        onMouseLeave={e => e.currentTarget.style.color = pinned ? 'var(--primary)' : 'var(--subtle)'}
+                      >
+                        {pinned ? '📌' : '📍'}
+                      </button>
+
+                      {/* Botón editar nombre inline */}
+                      <button
+                        onClick={e => startEdit(offer, e)}
+                        title={t('interview.editName')}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, padding: '2px 3px', color: 'var(--subtle)', lineHeight: 1 }}
+                        onMouseEnter={e => e.currentTarget.style.color = 'var(--text)'}
+                        onMouseLeave={e => e.currentTarget.style.color = 'var(--subtle)'}
+                      >
+                        ✏️
+                      </button>
+
+                      {/* Botón eliminar — muestra confirmación inline antes de borrar */}
+                      <button
+                        onClick={e => { e.stopPropagation(); setConfirmDeleteId(offer.id) }}
+                        title={t('interview.confirmDelete')}
+                        style={{ background: 'none', border: 'none', color: 'var(--subtle)', cursor: 'pointer', fontSize: 11, padding: '2px 3px', lineHeight: 1 }}
+                        onMouseEnter={e => e.currentTarget.style.color = 'var(--red)'}
+                        onMouseLeave={e => e.currentTarget.style.color = 'var(--subtle)'}
+                      >
+                        🗑
+                      </button>
                     </div>
                   </div>
-                  {sel && <span style={{ color: 'var(--primary)', fontSize: 12, flexShrink: 0, marginRight: 6 }}>✓</span>}
-                  {/* Botón eliminar */}
-                  <button
-                    onClick={e => {
-                      e.stopPropagation()
-                      if (sel) setSelectedId('fullstack')
-                      deleteOffer(offer.id)
-                    }}
-                    title="Eliminar oferta"
-                    style={{ background: 'none', border: 'none', color: 'var(--subtle)', cursor: 'pointer', fontSize: 12, padding: '2px 4px', flexShrink: 0, lineHeight: 1 }}
-                    onMouseEnter={e => e.currentTarget.style.color = 'var(--red)'}
-                    onMouseLeave={e => e.currentTarget.style.color = 'var(--subtle)'}
-                  >
-                    🗑
-                  </button>
+
+                  {/* ── Confirmación de borrado — aparece debajo de la card ──
+                      Inline en lugar de modal: menos disruptivo, mismo contexto visual.
+                      Si el usuario confirma, limpiamos también los metadatos (pin/status)
+                      para no dejar entradas huérfanas en localStorage. */}
+                  {isConfirmingDelete && (
+                    <div
+                      onClick={e => e.stopPropagation()}
+                      style={{
+                        borderTop: '1px solid var(--border)', padding: '8px 12px',
+                        background: 'color-mix(in srgb, var(--red) 6%, var(--surface))',
+                        display: 'flex', alignItems: 'center', gap: 8,
+                      }}
+                    >
+                      <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--red)', flex: 1 }}>
+                        {t('interview.confirmDelete')}
+                      </span>
+                      <button
+                        onClick={e => {
+                          e.stopPropagation()
+                          if (sel) setSelectedId('fullstack')  // fallback si se borra la seleccionada
+                          cleanMeta(offer.id)                  // limpia pin + status del localStorage
+                          deleteOffer(offer.id)
+                          setConfirmDeleteId(null)
+                        }}
+                        style={{ padding: '4px 10px', background: 'var(--red)', border: 'none', color: '#fff', cursor: 'pointer', fontFamily: 'Space Mono, monospace', fontSize: 9, fontWeight: 700 }}
+                      >
+                        {t('interview.confirmDeleteYes')}
+                      </button>
+                      <button
+                        onClick={e => { e.stopPropagation(); setConfirmDeleteId(null) }}
+                        style={{ padding: '4px 10px', background: 'var(--card)', border: '1px solid var(--border)', color: 'var(--subtle)', cursor: 'pointer', fontFamily: 'Space Mono, monospace', fontSize: 9 }}
+                      >
+                        {t('interview.confirmDeleteNo')}
+                      </button>
+                    </div>
+                  )}
                 </div>
               )
             })}
-          </div>
-        ) : (
-          <div style={{ padding: '12px 14px', background: 'var(--card)', border: '1px dashed var(--border)', fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)', textAlign: 'center', marginBottom: 10 }}>
-            {t('interview.noSavedOffers')}
           </div>
         )}
 

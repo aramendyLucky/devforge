@@ -288,7 +288,7 @@ export default function ResetPassword() {
 
       <footer className="forge-footer">
         <span>DevForge — preparacion tecnica</span>
-        <span>Powered by Claude</span>
+        <span>Lucas Y.Aramendy</span>
       </footer>
     </div>
   )

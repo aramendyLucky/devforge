@@ -42,7 +42,7 @@
     "langEs": "🇦🇷  Español",
     "langEn": "🇺🇸  English",
     "langSaved": "Your preference is saved...",
-    "footer": "DevForge beta · Powered by Groq AI"
+    "footer": "DevForge beta · Lucas Y.Aramendy"
   },
   "landing": {
     "label": "Technical interview preparation",
@@ -66,8 +66,8 @@
     "step3Desc": "AI evaluates your answer instantly.",
     "finalTitle": "Your next interview starts here.",
     "finalSubtitle": "No empty theory. Real practice only.",
-    "footer": "DevForge — technical interview prep",
-    "poweredBy": "Powered by Groq AI"
+    "footer": "DevForge — Lucas Y.Aramendy",
+    "poweredBy": "Lucas Y.Aramendy"
   },
   "auth": {
     "loginLabel": "Access",
@@ -167,7 +167,7 @@
     "weekPlan": "6-week plan",
     "week": "Week {{num}}",
     "inProgress": "IN PROGRESS",
-    "footer": "DevForge beta",
+    "footer": "DevForge beta · Lucas Y.Aramendy",
     "footerHome": "← Home"
   },
   "onboarding": {
@@ -392,7 +392,7 @@
     "emptyDesc": "Complete your first session to see your history.",
     "goDashboard": "Go to Dashboard →",
     "noQuestionsRecorded": "No questions recorded.",
-    "footer": "DevForge",
+    "footer": "DevForge · Lucas Y.Aramendy",
     "backDashboard": "← Dashboard"
   },
   "resources": {

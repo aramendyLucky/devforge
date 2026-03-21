@@ -176,7 +176,7 @@ export default function SettingsPanel({ onClose }) {
         </div>
 
         <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border)', fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)', textAlign: 'center', background: 'var(--surface)' }}>
-          DevForge beta · Powered by Claude
+          DevForge beta · Lucas Y.Aramendy
         </div>
       </div>
     </>

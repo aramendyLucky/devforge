@@ -329,7 +329,7 @@ export default function Topic() {
       </main>
 
       <footer className="forge-footer">
-        <span>DevForge</span>
+        <span>DevForge · Lucas Y.Aramendy</span>
         <button onClick={() => navigate('/dashboard')} style={{ background: 'none', border: 'none', color: 'var(--subtle)', cursor: 'pointer', fontFamily: 'Space Mono, monospace', fontSize: 10 }}>{t('topic.backDashboard')}</button>
       </footer>
 

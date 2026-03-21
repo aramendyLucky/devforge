@@ -7,39 +7,33 @@
  * ¿Qué hace?
  *   1. Permite subir un CV (PDF, DOCX, TXT, MD) o pegar el texto directamente
  *   2. Usa la oferta del store (rawOffers) o permite pegar una oferta personalizada
- *   3. Llama a Groq con un prompt especializado en ATS y CV matching para obtener:
- *      - Score global (0-100) + breakdown por categoría
- *      - Skills que ya tiene el candidato (matching)
- *      - Skills que faltan (gaps) con urgencia y tiempo estimado de aprendizaje
- *      - Proyectos sugeridos concretos y realizables para cerrar los gaps
- *      - Análisis ATS: keywords faltantes y tips de formato
+ *   3. Llama a Groq con un prompt especializado en ATS y CV matching:
+ *      - Score global (0-100) + breakdown por categoría (4 ejes)
+ *      - Skills que matchean con peso (critical/important/nice_to_have)
+ *      - Skills que faltan con urgencia y semanas estimadas de aprendizaje
+ *      - Proyectos concretos para cerrar los gaps (con días estimados y GitHub keywords)
+ *      - ATS: keywords exactas a agregar + tips de formato
  *      - Análisis de seniority: lo que pide el JD vs lo que demuestra el CV
- *      - Quick wins: 3 acciones accionables para hacer hoy en < 30 minutos
- *   4. Muestra los resultados en 6 tabs visuales dentro del panel lateral
+ *      - Quick Wins: 3 acciones para hoy en menos de 30 minutos
+ *   4. Toda la UI usa react-i18next → responde al toggle ES/EN del header
+ *   5. El idioma del análisis de IA también se adapta al idioma activo del store
  *
  * Arquitectura:
  *   - Mismo patrón que ResourcePanel: overlay + panel fijo derecho 420px
  *   - Llama a Groq directamente (callGroq local, mismo endpoint que useAI.js)
  *   - Usa extractTextFromFile de fileParser.js para leer el CV subido
  *   - Lee state.user.rawOffers del store como oferta pre-cargada por defecto
- *   - max_tokens 2500 porque el JSON de respuesta completo es grande (~1500 tokens)
+ *   - Lee state.config.language del store para adaptar el idioma de la IA
+ *   - max_tokens 2500 porque el JSON de respuesta completo ocupa ~1500 tokens
  *
  * Props:
  *   onClose — callback para cerrar el panel
- *
- * Notas de diseño (basadas en research de mejores prácticas):
- *   - score_breakdown separado del score global porque son problemas distintos:
- *     skills técnicas != keywords ATS. Un candidato puede tener las skills pero
- *     un CV que los ATS filtran por no usar los términos exactos del JD.
- *   - learning_time_weeks en missing_skills convierte "te falta X" (desalentador)
- *     en "te falta X — 3 semanas" (accionable con el roadmap de DevForge).
- *   - quick_wins al inicio del flujo porque la mayoría de personas no saben
- *     qué hacer después del análisis. 3 acciones hoy reducen la fricción a cero.
  */
 
-import { useState, useRef } from 'react'
-import { useStore }          from '../../store/index.jsx'
+import { useState, useRef }   from 'react'
+import { useStore }            from '../../store/index.jsx'
 import { extractTextFromFile, isFileSupported } from '../../lib/fileParser.js'
+import { useTranslation }      from 'react-i18next'
 
 // ── Constantes de Groq (mismo endpoint que useAI.js) ──────────────────────
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions'
@@ -49,9 +43,9 @@ const MODEL    = 'llama-3.3-70b-versatile'
  * callGroq — llama a la API de Groq para el análisis de CV.
  *
  * ¿Por qué max_tokens 2500?
- * El JSON de respuesta completo (score_breakdown + 6 missing_skills + 3 proyectos
- * + ATS keywords + seniority + quick_wins) ocupa entre 1200-1800 tokens.
- * Con 1000 (el default de useAI.js) el JSON se cortaría y fallaría el parse.
+ * El JSON de respuesta completo (score_breakdown + 6+ items en varios arrays)
+ * ocupa entre 1200-1800 tokens. Con 1000 (el default de useAI.js) el JSON
+ * se cortaría y fallaría el parse.
  */
 async function callGroq(messages) {
   const apiKey = import.meta.env.VITE_GROQ_API_KEY
@@ -61,53 +55,47 @@ async function callGroq(messages) {
       'Content-Type':  'application/json',
       'Authorization': `Bearer ${apiKey}`,
     },
-    body: JSON.stringify({
-      model:      MODEL,
-      max_tokens: 2500,
-      messages,
-    }),
+    body: JSON.stringify({ model: MODEL, max_tokens: 2500, messages }),
   })
   if (!response.ok) throw new Error(`Groq error: ${response.status}`)
   const data = await response.json()
   return data.choices?.[0]?.message?.content || ''
 }
 
-// ── Prompt del sistema — diseñado para precisión ATS y CV matching ─────────
-// El scoring sigue una fórmula clara para hacer el score interpretable:
-//   40% skills técnicas | 25% seniority | 20% dominio | 15% keywords ATS
-// Cada campo del JSON tiene un propósito de UX específico (ver comentarios arriba).
-const SYSTEM_PROMPT = `Sos un experto en reclutamiento técnico y optimización de CVs para el mercado tech latinoamericano y global.
-Tenés experiencia como tech recruiter en empresas de software, revisor de CVs para posiciones backend/fullstack/AI, y especialista en ATS.
+/**
+ * buildSystemPrompt — genera el prompt del sistema adaptado al idioma.
+ *
+ * ¿Por qué el idioma importa en el prompt?
+ * Aunque Groq puede detectar el idioma del CV, sin instrucción explícita
+ * puede mezclar inglés y español en el JSON de respuesta. Forzamos el idioma
+ * de respuesta para que coincida con el toggle del header.
+ *
+ * Scoring formula (40/25/20/15):
+ *   40% skills técnicas  — lo más relevante para el filtro técnico
+ *   25% match de seniority — afecta si el CV pasa el primer filtro de RRHH
+ *   20% dominio/industria — experiencia en el sector (fintech, SaaS, etc.)
+ *   15% keywords ATS — matching literal que hacen los robots de selección
+ */
+function buildSystemPrompt(lang) {
+  const langInstruction = lang === 'en'
+    ? 'Respond entirely in English. All strings in the JSON must be in English.'
+    : 'Respondé completamente en español (Argentina/Latinoamérica). Todos los strings del JSON en español.'
 
-Tu tarea: analizar la compatibilidad entre un CV y una descripción de puesto (JD) con máxima precisión.
+  return `You are an expert in tech recruitment and ATS (Applicant Tracking System) optimization with 10 years of experience evaluating CVs for software development roles (Python, Full Stack, AI Engineer, Backend, etc.).
 
-REGLAS DE ANÁLISIS:
-1. "compatibility_score" (0-100) se calcula así:
-   - 40% skills técnicas que coinciden vs requeridas
-   - 25% match de seniority (junior/mid/senior/lead)
-   - 20% experiencia en el dominio
-   - 15% keywords ATS presentes literalmente en el CV
+Your task: analyze the compatibility between a CV and a job description (JD) with maximum precision.
 
-2. "missing_skills" — solo incluir skills que el JD menciona EXPLÍCITAMENTE:
-   - urgency "critical" = mencionado como excluyente/must-have
-   - urgency "important" = valoramos/nice-to-have
-   - urgency "nice_to_have" = mencionado una vez o en sección de bonus
-   - learning_time_weeks: estimado realista de semanas para aprender lo básico
+${langInstruction}
 
-3. "matching_skills" — skills presentes en AMBOS documentos (con variaciones semánticas).
-   Máximo 10 items.
+SCORING RULES:
+- compatibility_score (0-100): 40% technical skills match + 25% seniority match + 20% domain experience + 15% ATS keywords literally present in CV
+- missing_skills urgency: "critical" = must-have/required, "important" = nice-to-have/valued, "nice_to_have" = mentioned once or in bonus section
+- matching_skills: semantic variations count (FastAPI matches "Python web framework"). Max 10 items.
+- project_suggestions: EXACTLY 2-3 concrete projects doable in 1-2 weeks. Prioritize closing multiple gaps at once.
+- ats_optimization: ATS does literal keyword matching. "REST APIs" does NOT match "RESTful services" in most ATS.
+- quick_wins: EXACTLY 3 actions the candidate can take TODAY in under 30 minutes.
 
-4. "project_suggestions" — EXACTAMENTE 2-3 proyectos realizables en 1-2 semanas.
-   Que cierren múltiples gaps a la vez.
-
-5. "ats_optimization" — los ATS hacen matching literal. "APIs REST" no matchea "RESTful services".
-   Busca keywords exactas del JD que NO aparecen literalmente en el CV.
-
-6. "quick_wins" — EXACTAMENTE 3 acciones para hacer HOY en menos de 30 minutos.
-
-Respondé SOLO en JSON válido, sin texto adicional, sin backticks, sin comentarios.
-Todos los strings en español (Argentina/Latinoamérica).
-
+Respond ONLY with valid JSON, no extra text, no backticks, no comments:
 {
   "compatibility_score": <number 0-100>,
   "score_breakdown": {
@@ -116,7 +104,7 @@ Todos los strings en español (Argentina/Latinoamérica).
     "domain_experience": <number 0-100>,
     "keywords_ats": <number 0-100>
   },
-  "verdict": "<1-2 oraciones, honesto y constructivo>",
+  "verdict": "<1-2 honest and constructive sentences>",
   "matching_skills": [
     { "skill": "<string>", "found_in_cv": "<string>", "found_in_jd": "<string>", "weight": "critical|important|nice_to_have" }
   ],
@@ -136,29 +124,30 @@ Todos los strings en español (Argentina/Latinoamérica).
   "seniority_analysis": {
     "jd_requires": "junior|mid|senior|lead|staff",
     "cv_demonstrates": "junior|mid|mid-senior|senior|lead",
-    "gap": "<string o null>",
-    "recommendation": "<string o null>"
+    "gap": "<string or null>",
+    "recommendation": "<string or null>"
   },
-  "quick_wins": ["<acción concreta 1>", "<acción concreta 2>", "<acción concreta 3>"]
+  "quick_wins": ["<string>", "<string>", "<string>"]
 }`
-
-// ── Helpers de color y estilos ─────────────────────────────────────────────
-
-/** Devuelve el color CSS según el nivel del score */
-function scoreColor(score) {
-  if (score >= 75) return '#22c55e'   // verde — alto match
-  if (score >= 50) return '#f59e0b'   // ámbar — match medio
-  return '#ef4444'                    // rojo — bajo match / brecha crítica
 }
 
-/** Convierte un score 0-100 en una barra de progreso simple */
-function ScoreBar({ value, color }) {
+// ── Helpers visuales ───────────────────────────────────────────────────────
+
+/** Color CSS según nivel de score (semáforo verde/ámbar/rojo) */
+function scoreColor(score) {
+  if (score >= 75) return '#22c55e'
+  if (score >= 50) return '#f59e0b'
+  return '#ef4444'
+}
+
+/** Barra de progreso horizontal para el score breakdown */
+function ScoreBar({ value }) {
   return (
     <div style={{ height: 4, background: 'var(--border)', borderRadius: 2, overflow: 'hidden', flex: 1 }}>
       <div style={{
         height: '100%',
         width:  `${Math.min(100, Math.max(0, value))}%`,
-        background: color || scoreColor(value),
+        background: scoreColor(value),
         borderRadius: 2,
         transition: 'width 0.6s ease-out',
       }} />
@@ -166,33 +155,30 @@ function ScoreBar({ value, color }) {
   )
 }
 
-/** Badge de urgencia para los skill gaps — colores semáforo */
-function UrgencyBadge({ level }) {
-  const map = {
-    critical:     { label: 'Crítico',  bg: 'rgba(239,68,68,0.15)',   color: '#ef4444' },
-    important:    { label: 'Importante', bg: 'rgba(245,158,11,0.15)',  color: '#f59e0b' },
-    nice_to_have: { label: 'Nice-to-have', bg: 'rgba(100,116,139,0.15)', color: '#94a3b8' },
+/**
+ * UrgencyBadge — badge de urgencia para los skill gaps.
+ * Acepta el label traducido para que cambie con el idioma activo.
+ */
+function UrgencyBadge({ level, label }) {
+  const colorMap = {
+    critical:     { bg: 'rgba(239,68,68,0.15)',   color: '#ef4444' },
+    important:    { bg: 'rgba(245,158,11,0.15)',   color: '#f59e0b' },
+    nice_to_have: { bg: 'rgba(100,116,139,0.15)',  color: '#94a3b8' },
   }
-  const style = map[level] || map.nice_to_have
+  const style = colorMap[level] || colorMap.nice_to_have
   return (
     <span style={{
-      display:    'inline-block',
-      padding:    '1px 6px',
-      background: style.bg,
-      color:      style.color,
-      borderRadius: 3,
-      fontFamily: 'Space Mono, monospace',
-      fontSize:   9,
-      fontWeight: 700,
-      letterSpacing: '0.06em',
-      textTransform: 'uppercase',
+      display: 'inline-block', padding: '1px 6px',
+      background: style.bg, color: style.color, borderRadius: 3,
+      fontFamily: 'Space Mono, monospace', fontSize: 9, fontWeight: 700,
+      letterSpacing: '0.06em', textTransform: 'uppercase',
     }}>
-      {style.label}
+      {label}
     </span>
   )
 }
 
-/** Badge de peso/importancia para los skills que matchean */
+/** WeightBadge — estrellas de prioridad para los skills que matchean */
 function WeightBadge({ level }) {
   const map = {
     critical:     { label: '★★★', color: '#22c55e' },
@@ -209,8 +195,12 @@ function WeightBadge({ level }) {
 
 // ─────────────────────────────────────────────────────────────────────────
 export default function CVMatcherPanel({ onClose }) {
-  const { state }     = useStore()
-  const fileInputRef  = useRef(null)
+  const { state }    = useStore()
+  const { t }        = useTranslation()   // hook de i18n → toda la UI responde al toggle ES/EN
+  const fileInputRef = useRef(null)
+
+  // Idioma activo del store → determina el idioma de respuesta de la IA
+  const activeLang = state.config?.language || 'es'
 
   // ── Estado del flujo ──────────────────────────────────────────────────
   const [cvText,    setCvText]    = useState('')
@@ -219,8 +209,16 @@ export default function CVMatcherPanel({ onClose }) {
   const [loading,   setLoading]   = useState(false)
   const [error,     setError]     = useState(null)
   const [result,    setResult]    = useState(null)
-  // tabs: 'quickwins' | 'matches' | 'gaps' | 'projects' | 'ats' | 'seniority'
+  // Tab por defecto: 'quickwins' — es lo más accionable para el usuario
   const [activeTab, setActiveTab] = useState('quickwins')
+
+  // ── Labels de urgencia traducidos ────────────────────────────────────
+  // Se calculan a partir de las keys del locale para que cambien con el idioma
+  const urgencyLabel = {
+    critical:     t('cvmatcher.skillCritical'),
+    important:    t('cvmatcher.skillImportant'),
+    nice_to_have: t('cvmatcher.skillNiceToHave'),
+  }
 
   // ── Manejo del archivo de CV ──────────────────────────────────────────
   /**
@@ -230,7 +228,7 @@ export default function CVMatcherPanel({ onClose }) {
   async function handleFile(file) {
     if (!file) return
     if (!isFileSupported(file)) {
-      setError('Formato no soportado. Usá PDF, DOCX, TXT o MD.')
+      setError(t('cvmatcher.errorUnsupported'))
       return
     }
     setError(null)
@@ -239,7 +237,7 @@ export default function CVMatcherPanel({ onClose }) {
       const text = await extractTextFromFile(file)
       setCvText(text)
     } catch (err) {
-      setError(`No se pudo leer el archivo: ${err.message}`)
+      setError(`${t('cvmatcher.errorUnsupported')}: ${err.message}`)
     }
   }
 
@@ -256,59 +254,60 @@ export default function CVMatcherPanel({ onClose }) {
   /**
    * analyze — envía CV + JD a Groq y parsea el JSON de respuesta.
    *
-   * Estrategia de parsing robusta:
-   * 1. Intenta JSON.parse directo del texto limpio
-   * 2. Si falla, extrae el primer bloque { ... } con regex (Groq a veces
-   *    agrega texto antes/después del JSON a pesar del prompt)
+   * ¿Por qué slice(0, 4000) y slice(0, 3000)?
+   * Con prompts más largos, llama-3.3-70b tiende a truncar el JSON de respuesta
+   * o a no cerrar los brackets. Estos límites producen JSON consistente.
+   *
+   * Parsing robusto:
+   *   1. Limpia backticks por si Groq los agrega
+   *   2. Intenta JSON.parse directo
+   *   3. Fallback: extrae el primer bloque { ... } con regex
    */
   async function analyze() {
-    if (!cvText.trim()) { setError('Primero subí tu CV o pegá el texto.'); return }
-    if (!jobText.trim()) { setError('Pegá el texto de la oferta laboral.'); return }
+    if (!cvText.trim()) { setError(t('cvmatcher.errorNoCV'));  return }
+    if (!jobText.trim()) { setError(t('cvmatcher.errorNoJob')); return }
     setLoading(true)
     setError(null)
     setResult(null)
 
     try {
-      // Limitamos el texto para evitar truncamiento del JSON de respuesta.
-      // 4000 chars del CV y 3000 del JD es suficiente para un análisis preciso.
-      const userMsg = `CV DEL CANDIDATO:
---- INICIO CV ---
+      const userMsg = `CV:
+--- START ---
 ${cvText.trim().slice(0, 4000)}
---- FIN CV ---
+--- END ---
 
-DESCRIPCIÓN DEL PUESTO (JD):
---- INICIO JD ---
+JOB DESCRIPTION:
+--- START ---
 ${jobText.trim().slice(0, 3000)}
---- FIN JD ---
+--- END ---
 
-Analizá la compatibilidad y devolvé el JSON completo.`
+Analyze the compatibility and return the complete JSON.`
 
       const raw = await callGroq([
-        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'system', content: buildSystemPrompt(activeLang) },
         { role: 'user',   content: userMsg },
       ])
 
-      // Parsing robusto: limpia backticks y extrae el bloque JSON
+      // Parsing robusto — Groq a veces agrega texto antes/después del JSON
       const clean = raw.replace(/```json|```/g, '').trim()
       let parsed
       try {
         parsed = JSON.parse(clean)
       } catch {
-        // Fallback: extrae el primer { ... } del texto
         const match = clean.match(/\{[\s\S]*\}/)
-        if (!match) throw new Error('La IA no devolvió un JSON válido. Intentá de nuevo.')
+        if (!match) throw new Error(t('cvmatcher.errorBadJSON'))
         parsed = JSON.parse(match[0])
       }
 
-      // Validación mínima: si no hay score, el JSON llegó incompleto
+      // Validación mínima: si no hay score el JSON llegó incompleto
       if (typeof parsed.compatibility_score !== 'number') {
-        throw new Error('Respuesta incompleta de la IA. Intentá de nuevo.')
+        throw new Error(t('cvmatcher.errorIncomplete'))
       }
 
       setResult(parsed)
-      setActiveTab('quickwins')  // arranca siempre en Quick Wins (lo más accionable)
+      setActiveTab('quickwins')
     } catch (err) {
-      setError(err.message || 'Error al analizar. Intentá de nuevo.')
+      setError(err.message || t('cvmatcher.errorBadJSON'))
     } finally {
       setLoading(false)
     }
@@ -319,26 +318,20 @@ Analizá la compatibilidad y devolvé el JSON completo.`
   function renderTabContent() {
     if (!result) return null
 
-    // ── Tab: Quick Wins ──────────────────────────────────────────────
-    // Primero en el orden porque son las acciones más accionables para el usuario
+    // ── Quick Wins (tab por defecto) ─────────────────────────────────
     if (activeTab === 'quickwins') {
       return (
         <div style={{ padding: '16px 20px' }}>
           <p style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)', margin: '0 0 14px', lineHeight: 1.5 }}>
-            3 acciones que podés hacer <strong style={{ color: 'var(--text)' }}>hoy</strong> en menos de 30 minutos para mejorar tu candidatura.
+            {t('cvmatcher.quickWinsDesc')}
           </p>
           {(result.quick_wins || []).map((win, i) => (
             <div key={i} style={{
-              display:    'flex',
-              gap:        10,
-              marginBottom: 12,
-              padding:    '10px 12px',
-              background: 'var(--surface)',
-              border:     '1px solid var(--border)',
-              borderLeft: '3px solid var(--primary)',
+              display: 'flex', gap: 10, marginBottom: 12,
+              padding: '10px 12px', background: 'var(--surface)',
+              border: '1px solid var(--border)', borderLeft: '3px solid var(--primary)',
               borderRadius: 4,
             }}>
-              {/* Número del quick win */}
               <div style={{
                 width: 20, height: 20, borderRadius: '50%',
                 background: 'var(--primary)', color: 'var(--bg)',
@@ -354,28 +347,29 @@ Analizá la compatibilidad y devolvé el JSON completo.`
             </div>
           ))}
 
-          {/* Análisis de seniority debajo de quick wins — contexto adicional */}
+          {/* Análisis de seniority — complementa los quick wins con contexto */}
           {result.seniority_analysis && (
             <div style={{
-              marginTop: 16,
-              padding: '12px 14px',
-              background: 'var(--surface)',
-              border: '1px solid var(--border)',
-              borderRadius: 4,
+              marginTop: 16, padding: '12px 14px',
+              background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 4,
             }}>
               <p style={{ fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: 11, color: 'var(--text)', margin: '0 0 8px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                Análisis de Seniority
+                {t('cvmatcher.seniorityTitle')}
               </p>
               <div style={{ display: 'flex', gap: 16, marginBottom: 8 }}>
                 <div>
-                  <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--subtle)', marginBottom: 2 }}>PIDE</div>
+                  <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--subtle)', marginBottom: 2 }}>
+                    {t('cvmatcher.seniorityRequires')}
+                  </div>
                   <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 12, color: 'var(--primary)', fontWeight: 700, textTransform: 'uppercase' }}>
                     {result.seniority_analysis.jd_requires}
                   </div>
                 </div>
                 <div style={{ color: 'var(--border)', fontFamily: 'Space Mono', fontSize: 16 }}>→</div>
                 <div>
-                  <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--subtle)', marginBottom: 2 }}>TU CV DEMUESTRA</div>
+                  <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--subtle)', marginBottom: 2 }}>
+                    {t('cvmatcher.seniorityDemonstrates')}
+                  </div>
                   <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 12, color: scoreColor(result.score_breakdown?.seniority_match || 50), fontWeight: 700, textTransform: 'uppercase' }}>
                     {result.seniority_analysis.cv_demonstrates}
                   </div>
@@ -392,20 +386,18 @@ Analizá la compatibilidad y devolvé el JSON completo.`
       )
     }
 
-    // ── Tab: Matches ─────────────────────────────────────────────────
+    // ── Matches ──────────────────────────────────────────────────────
     if (activeTab === 'matches') {
       return (
         <div style={{ padding: '16px 20px' }}>
           <p style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)', margin: '0 0 12px' }}>
-            Skills y keywords encontradas en tu CV que coinciden con la oferta. ★★★ = crítico para el rol.
+            {t('cvmatcher.matchesDesc')}
           </p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {(result.matching_skills || []).map((item, i) => (
               <div key={i} style={{
-                padding: '8px 10px',
-                background: 'var(--surface)',
-                border: '1px solid var(--border)',
-                borderRadius: 4,
+                padding: '8px 10px', background: 'var(--surface)',
+                border: '1px solid var(--border)', borderRadius: 4,
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
                   <span style={{ fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: 12, color: '#22c55e' }}>
@@ -414,46 +406,39 @@ Analizá la compatibilidad y devolvé el JSON completo.`
                   <WeightBadge level={item.weight} />
                 </div>
                 <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--subtle)', lineHeight: 1.5 }}>
-                  <span style={{ color: 'var(--text)' }}>CV:</span> {item.found_in_cv}
+                  <span style={{ color: 'var(--text)' }}>{t('cvmatcher.matchCV')}:</span> {item.found_in_cv}
                   <span style={{ margin: '0 4px', color: 'var(--border)' }}>·</span>
-                  <span style={{ color: 'var(--text)' }}>JD:</span> {item.found_in_jd}
+                  <span style={{ color: 'var(--text)' }}>{t('cvmatcher.matchJD')}:</span> {item.found_in_jd}
                 </div>
               </div>
             ))}
           </div>
-          {(!result.matching_skills || result.matching_skills.length === 0) && (
-            <p style={{ fontFamily: 'Space Mono, monospace', fontSize: 11, color: 'var(--subtle)' }}>
-              No se encontraron matches claros. Revisá el texto del CV.
-            </p>
-          )}
         </div>
       )
     }
 
-    // ── Tab: Gaps ────────────────────────────────────────────────────
+    // ── Gaps ─────────────────────────────────────────────────────────
     if (activeTab === 'gaps') {
       return (
         <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 10 }}>
           <p style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)', margin: 0 }}>
-            Skills del JD que no encontré en tu CV. Los críticos pueden ser bloqueantes para llegar a la entrevista.
+            {t('cvmatcher.gapsDesc')}
           </p>
           {(result.missing_skills || []).map((item, i) => (
             <div key={i} style={{
-              background: 'var(--surface)',
-              border: '1px solid var(--border)',
-              borderRadius: 4,
-              padding: '10px 12px',
+              background: 'var(--surface)', border: '1px solid var(--border)',
+              borderRadius: 4, padding: '10px 12px',
             }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
                 <span style={{ fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: 13, color: 'var(--text)' }}>
                   {item.skill}
                 </span>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  {/* Tiempo estimado de aprendizaje — convierte "te falta X" en un plan */}
+                  {/* Tiempo estimado — convierte "te falta X" en un plan concreto */}
                   <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--subtle)' }}>
-                    ~{item.learning_time_weeks}sem
+                    ~{item.learning_time_weeks}{t('cvmatcher.weeks')}
                   </span>
-                  <UrgencyBadge level={item.urgency} />
+                  <UrgencyBadge level={item.urgency} label={urgencyLabel[item.urgency]} />
                 </div>
               </div>
               <p style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)', margin: 0, lineHeight: 1.5 }}>
@@ -465,29 +450,24 @@ Analizá la compatibilidad y devolvé el JSON completo.`
       )
     }
 
-    // ── Tab: Proyectos ───────────────────────────────────────────────
+    // ── Proyectos ────────────────────────────────────────────────────
     if (activeTab === 'projects') {
       return (
         <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
           <p style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)', margin: 0 }}>
-            Proyectos concretos para cerrar los gaps y diferenciarte en la entrevista técnica.
+            {t('cvmatcher.projectsDesc')}
           </p>
           {(result.project_suggestions || []).map((proj, i) => (
             <div key={i} style={{
-              background: 'var(--surface)',
-              border: '1px solid var(--border)',
-              borderLeft: '3px solid var(--primary)',
-              borderRadius: 4,
-              padding: '12px 14px',
+              background: 'var(--surface)', border: '1px solid var(--border)',
+              borderLeft: '3px solid var(--primary)', borderRadius: 4, padding: '12px 14px',
             }}>
-              {/* Header del proyecto: número + nombre + días estimados */}
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 8 }}>
                 <span style={{
                   width: 20, height: 20, borderRadius: '50%',
                   background: 'var(--primary)', color: 'var(--bg)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontFamily: 'Space Mono, monospace', fontSize: 10, fontWeight: 700,
-                  flexShrink: 0,
+                  fontFamily: 'Space Mono, monospace', fontSize: 10, fontWeight: 700, flexShrink: 0,
                 }}>
                   {i + 1}
                 </span>
@@ -496,34 +476,30 @@ Analizá la compatibilidad y devolvé el JSON completo.`
                     {proj.title}
                   </div>
                   <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--subtle)' }}>
-                    {proj.difficulty} · ~{proj.estimated_days} días
+                    {proj.difficulty} · ~{proj.estimated_days} {t('cvmatcher.days')}
                   </div>
                 </div>
               </div>
 
-              {/* Stack de tecnologías */}
+              {/* Stack de tecnologías del proyecto */}
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 8 }}>
                 {(proj.skills_covered || []).map((tech, j) => (
                   <span key={j} style={{
                     padding: '2px 7px',
-                    background: 'rgba(245,158,11,0.12)',
-                    color: 'var(--primary)',
-                    border: '1px solid rgba(245,158,11,0.25)',
-                    borderRadius: 3,
-                    fontFamily: 'Space Mono, monospace',
-                    fontSize: 10,
+                    background: 'rgba(245,158,11,0.12)', color: 'var(--primary)',
+                    border: '1px solid rgba(245,158,11,0.25)', borderRadius: 3,
+                    fontFamily: 'Space Mono, monospace', fontSize: 10,
                   }}>
                     {tech}
                   </span>
                 ))}
               </div>
 
-              {/* Descripción */}
               <p style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)', margin: '0 0 8px', lineHeight: 1.6 }}>
                 {proj.description}
               </p>
 
-              {/* GitHub keywords para buscar referencias */}
+              {/* GitHub keywords para buscar repos de referencia */}
               {proj.github_keywords?.length > 0 && (
                 <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--subtle)' }}>
                   <span style={{ color: 'var(--text)' }}>GitHub: </span>
@@ -536,53 +512,40 @@ Analizá la compatibilidad y devolvé el JSON completo.`
       )
     }
 
-    // ── Tab: ATS ─────────────────────────────────────────────────────
+    // ── ATS ──────────────────────────────────────────────────────────
     if (activeTab === 'ats') {
       const ats = result.ats_optimization
       if (!ats) return null
       return (
         <div style={{ padding: '16px 20px' }}>
-          {/* Score ATS específico */}
+          {/* ATS Score específico (diferente del score global) */}
           <div style={{
-            display: 'flex', alignItems: 'center', gap: 12,
-            padding: '10px 14px',
-            background: 'var(--surface)',
-            border: '1px solid var(--border)',
-            borderRadius: 4,
-            marginBottom: 16,
+            display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px',
+            background: 'var(--surface)', border: '1px solid var(--border)',
+            borderRadius: 4, marginBottom: 16,
           }}>
-            <div style={{
-              fontFamily: 'Space Mono, monospace',
-              fontSize: 28, fontWeight: 700,
-              color: scoreColor(ats.overall_ats_score),
-              lineHeight: 1,
-            }}>
+            <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 28, fontWeight: 700, color: scoreColor(ats.overall_ats_score), lineHeight: 1 }}>
               {ats.overall_ats_score}
             </div>
             <div>
               <div style={{ fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: 11, color: 'var(--text)' }}>
-                ATS Score
+                {t('cvmatcher.atsScoreLabel')}
               </div>
               <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--subtle)', marginTop: 2 }}>
-                Porcentaje del JD indexado por los robots de selección
+                {t('cvmatcher.atsScoreDesc')}
               </div>
             </div>
           </div>
 
-          {/* Keywords a agregar */}
+          {/* Keywords exactas a agregar */}
           {ats.keywords_to_add?.length > 0 && (
             <>
               <p style={{ fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: 11, color: 'var(--text)', margin: '0 0 8px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                Keywords a agregar
+                {t('cvmatcher.atsKeywordsTitle')}
               </p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
                 {ats.keywords_to_add.map((kw, i) => (
-                  <div key={i} style={{
-                    padding: '10px 12px',
-                    background: 'var(--surface)',
-                    border: '1px solid var(--border)',
-                    borderRadius: 4,
-                  }}>
+                  <div key={i} style={{ padding: '10px 12px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 4 }}>
                     <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 12, color: 'var(--primary)', fontWeight: 700, marginBottom: 4 }}>
                       "{kw.keyword}"
                     </div>
@@ -598,11 +561,11 @@ Analizá la compatibilidad y devolvé el JSON completo.`
             </>
           )}
 
-          {/* Tips de formato */}
+          {/* Tips de formato ATS */}
           {ats.formatting_tips?.length > 0 && (
             <>
               <p style={{ fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: 11, color: 'var(--text)', margin: '0 0 8px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                Tips de formato
+                {t('cvmatcher.atsFormattingTitle')}
               </p>
               <ol style={{ margin: 0, padding: '0 0 0 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {ats.formatting_tips.map((tip, i) => (
@@ -618,21 +581,17 @@ Analizá la compatibilidad y devolvé el JSON completo.`
     }
   }
 
-  // ── Estilo de los botones de tab ──────────────────────────────────────
+  // ── Estilo activo/inactivo de los tabs ────────────────────────────────
   function tabStyle(id) {
     const isActive = activeTab === id
     return {
-      flex: 1,
-      padding: '7px 2px',
+      flex: 1, padding: '7px 2px',
       background: isActive ? 'var(--primary)' : 'transparent',
       color:      isActive ? 'var(--bg)'      : 'var(--subtle)',
-      border:     'none',
-      cursor:     'pointer',
-      fontFamily: 'Space Mono, monospace',
-      fontSize:   9,
+      border: 'none', cursor: 'pointer',
+      fontFamily: 'Space Mono, monospace', fontSize: 9,
       fontWeight: isActive ? 700 : 400,
-      transition: 'all 0.15s',
-      letterSpacing: '0.03em',
+      transition: 'all 0.15s', letterSpacing: '0.03em',
     }
   }
 
@@ -645,41 +604,31 @@ Analizá la compatibilidad y devolvé el JSON completo.`
         style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 40 }}
       />
 
-      {/* Panel lateral — mismo patrón que ResourcePanel */}
+      {/* Panel lateral derecho — mismas dimensiones que ResourcePanel */}
       <div style={{
         position: 'fixed', top: 0, right: 0, bottom: 0, width: 420,
-        background:   'var(--bg)',
-        borderLeft:   '2px solid var(--primary)',
-        zIndex:       50,
-        display:      'flex',
-        flexDirection: 'column',
-        overflowY:    'auto',
-        animation:    'slideInRight 0.25s ease-out',
+        background: 'var(--bg)', borderLeft: '2px solid var(--primary)',
+        zIndex: 50, display: 'flex', flexDirection: 'column',
+        overflowY: 'auto', animation: 'slideInRight 0.25s ease-out',
       }}>
 
         {/* ── Cabecera sticky ── */}
         <div style={{
-          padding: '14px 20px',
-          borderBottom: '1px solid var(--border)',
-          background: 'var(--surface)',
-          position: 'sticky', top: 0, zIndex: 1,
+          padding: '14px 20px', borderBottom: '1px solid var(--border)',
+          background: 'var(--surface)', position: 'sticky', top: 0, zIndex: 1,
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         }}>
           <div>
             <div style={{ fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: 14, color: 'var(--text)' }}>
-              ⚡ CV Matcher
+              ⚡ {t('cvmatcher.title')}
             </div>
             <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--subtle)', marginTop: 2 }}>
-              Compatibilidad ATS · powered by Groq AI
+              {t('cvmatcher.subtitle')}
             </div>
           </div>
           <button
             onClick={onClose}
-            style={{
-              background: 'none', border: 'none', color: 'var(--subtle)',
-              cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: 4,
-              transition: 'color 0.15s',
-            }}
+            style={{ background: 'none', border: 'none', color: 'var(--subtle)', cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: 4, transition: 'color 0.15s' }}
             onMouseEnter={e => e.currentTarget.style.color = 'var(--text)'}
             onMouseLeave={e => e.currentTarget.style.color = 'var(--subtle)'}
           >
@@ -690,17 +639,12 @@ Analizá la compatibilidad y devolvé el JSON completo.`
         {/* ── Contenido scrollable ── */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
 
-          {/* ── Sección 1: upload del CV ── */}
+          {/* ── Sección 1: CV ── */}
           <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)' }}>
-            <p style={{
-              fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: 11,
-              color: 'var(--text)', margin: '0 0 8px',
-              textTransform: 'uppercase', letterSpacing: '0.06em',
-            }}>
-              1 · Tu CV
+            <p style={{ fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: 11, color: 'var(--text)', margin: '0 0 8px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              {t('cvmatcher.section1')}
             </p>
-
-            {/* Área de drop de archivo */}
+            {/* Área de drop */}
             <div
               onDrop={handleDrop}
               onDragOver={e => e.preventDefault()}
@@ -708,25 +652,23 @@ Analizá la compatibilidad y devolvé el JSON completo.`
               style={{
                 border: '1px dashed var(--border)', borderRadius: 4,
                 padding: '12px', textAlign: 'center', cursor: 'pointer',
-                background: 'var(--surface)', marginBottom: 8,
-                transition: 'border-color 0.15s',
+                background: 'var(--surface)', marginBottom: 8, transition: 'border-color 0.15s',
               }}
               onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--primary)'}
               onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}
             >
               <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)', lineHeight: 1.6 }}>
                 {fileName
-                  ? <><span style={{ color: 'var(--primary)' }}>✓ {fileName}</span><br />Click para cambiar</>
-                  : <>Arrastrá tu CV o <span style={{ color: 'var(--primary)' }}>hacé click</span><br />(PDF · DOCX · TXT · MD)</>
+                  ? <><span style={{ color: 'var(--primary)' }}>✓ {fileName}</span><br />{t('cvmatcher.dropChange')}</>
+                  : <>{t('cvmatcher.dropHint')} <span style={{ color: 'var(--primary)' }}>{t('cvmatcher.dropClick')}</span><br />{t('cvmatcher.dropFormats')}</>
                 }
               </div>
             </div>
             <input ref={fileInputRef} type="file" accept=".pdf,.docx,.txt,.md" onChange={handleFileInput} style={{ display: 'none' }} />
-
             <textarea
               value={cvText}
               onChange={e => { setCvText(e.target.value); setFileName('') }}
-              placeholder="O pegá el texto de tu CV acá..."
+              placeholder={t('cvmatcher.cvPlaceholder')}
               rows={4}
               style={{
                 width: '100%', background: 'var(--surface)', border: '1px solid var(--border)',
@@ -739,22 +681,18 @@ Analizá la compatibilidad y devolvé el JSON completo.`
             />
           </div>
 
-          {/* ── Sección 2: oferta laboral ── */}
+          {/* ── Sección 2: Oferta ── */}
           <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)' }}>
-            <p style={{
-              fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: 11,
-              color: 'var(--text)', margin: '0 0 4px',
-              textTransform: 'uppercase', letterSpacing: '0.06em',
-            }}>
-              2 · Oferta laboral
+            <p style={{ fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: 11, color: 'var(--text)', margin: '0 0 4px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              {t('cvmatcher.section2')}
             </p>
             <p style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--subtle)', margin: '0 0 8px' }}>
-              {jobText ? 'Pre-cargada desde tu perfil. Podés editarla.' : 'Pegá el texto completo de la oferta.'}
+              {jobText ? t('cvmatcher.jobPreloaded') : ''}
             </p>
             <textarea
               value={jobText}
               onChange={e => setJobText(e.target.value)}
-              placeholder="Pegá aquí el texto de la oferta laboral..."
+              placeholder={t('cvmatcher.jobPlaceholder')}
               rows={5}
               style={{
                 width: '100%', background: 'var(--surface)', border: '1px solid var(--border)',
@@ -795,7 +733,7 @@ Analizá la compatibilidad y devolvé el JSON completo.`
                 opacity: (!cvText.trim() || !jobText.trim()) ? 0.5 : 1,
               }}
             >
-              {loading ? '⏳ Analizando...' : '⚡ Analizar compatibilidad'}
+              {loading ? t('cvmatcher.analyzingBtn') : t('cvmatcher.analyzeBtn')}
             </button>
           </div>
 
@@ -804,7 +742,6 @@ Analizá la compatibilidad y devolvé el JSON completo.`
             <>
               {/* Score global + breakdown */}
               <div style={{ margin: '0 20px 14px', padding: '14px 16px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 4 }}>
-                {/* Score principal */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 12 }}>
                   <div style={{ textAlign: 'center', flexShrink: 0 }}>
                     <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 40, fontWeight: 700, color: scoreColor(result.compatibility_score), lineHeight: 1 }}>
@@ -821,9 +758,9 @@ Analizá la compatibilidad y devolvé el JSON completo.`
                       borderRadius: 3, fontFamily: 'Space Mono, monospace',
                       fontSize: 9, fontWeight: 700, letterSpacing: '0.08em', marginBottom: 6,
                     }}>
-                      {result.compatibility_score >= 75 ? '● ALTO MATCH'
-                        : result.compatibility_score >= 50 ? '● MATCH MEDIO'
-                        : '● BAJO MATCH'}
+                      {result.compatibility_score >= 75 ? t('cvmatcher.highMatch')
+                        : result.compatibility_score >= 50 ? t('cvmatcher.medMatch')
+                        : t('cvmatcher.lowMatch')}
                     </div>
                     <p style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)', margin: 0, lineHeight: 1.5 }}>
                       {result.verdict}
@@ -831,17 +768,17 @@ Analizá la compatibilidad y devolvé el JSON completo.`
                   </div>
                 </div>
 
-                {/* Score breakdown — 4 ejes con barra visual */}
+                {/* Score breakdown — 4 barras */}
                 {result.score_breakdown && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                     {[
-                      { label: 'Skills técnicas',    key: 'technical_skills'  },
-                      { label: 'Seniority',          key: 'seniority_match'   },
-                      { label: 'Dominio/industria',  key: 'domain_experience' },
-                      { label: 'Keywords ATS',       key: 'keywords_ats'      },
+                      { label: activeLang === 'en' ? 'Tech skills'   : 'Skills técnicas',   key: 'technical_skills'  },
+                      { label: activeLang === 'en' ? 'Seniority'     : 'Seniority',          key: 'seniority_match'   },
+                      { label: activeLang === 'en' ? 'Domain'        : 'Dominio',             key: 'domain_experience' },
+                      { label: activeLang === 'en' ? 'ATS keywords'  : 'Keywords ATS',       key: 'keywords_ats'      },
                     ].map(({ label, key }) => (
                       <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--subtle)', width: 100, flexShrink: 0 }}>
+                        <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--subtle)', width: 90, flexShrink: 0 }}>
                           {label}
                         </span>
                         <ScoreBar value={result.score_breakdown[key]} />
@@ -855,18 +792,13 @@ Analizá la compatibilidad y devolvé el JSON completo.`
               </div>
 
               {/* Tabs de navegación */}
-              <div style={{
-                display: 'flex',
-                borderTop: '1px solid var(--border)',
-                borderBottom: '1px solid var(--border)',
-                background: 'var(--surface)',
-              }}>
+              <div style={{ display: 'flex', borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)', background: 'var(--surface)' }}>
                 {[
-                  { id: 'quickwins', label: '⚡ Hoy'     },
-                  { id: 'matches',   label: '✓ Match'    },
-                  { id: 'gaps',      label: '✗ Gaps'     },
-                  { id: 'projects',  label: '⬡ Proyectos'},
-                  { id: 'ats',       label: '▲ ATS'      },
+                  { id: 'quickwins', label: t('cvmatcher.tabToday')    },
+                  { id: 'matches',   label: t('cvmatcher.tabMatches')  },
+                  { id: 'gaps',      label: t('cvmatcher.tabGaps')     },
+                  { id: 'projects',  label: t('cvmatcher.tabProjects') },
+                  { id: 'ats',       label: t('cvmatcher.tabAts')      },
                 ].map(tab => (
                   <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={tabStyle(tab.id)}>
                     {tab.label}
@@ -880,19 +812,17 @@ Analizá la compatibilidad y devolvé el JSON completo.`
           )}
         </div>
 
-        {/* Footer del panel */}
+        {/* Footer */}
         <div style={{
-          padding: '8px 20px',
-          borderTop: '1px solid var(--border)',
-          background: 'var(--surface)',
-          fontFamily: 'Space Mono, monospace',
+          padding: '8px 20px', borderTop: '1px solid var(--border)',
+          background: 'var(--surface)', fontFamily: 'Space Mono, monospace',
           fontSize: 9, color: 'var(--subtle)', textAlign: 'center',
         }}>
-          DevForge CV Matcher · Lucas Y.Aramendy · Groq llama-3.3-70b
+          {t('cvmatcher.footer')}
         </div>
       </div>
 
-      {/* Animación de entrada del panel */}
+      {/* Animación de entrada — misma que ResourcePanel */}
       <style>{`
         @keyframes slideInRight {
           from { transform: translateX(100%); opacity: 0 }

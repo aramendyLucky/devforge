@@ -598,10 +598,13 @@ Analyze the compatibility and return the complete JSON.`
   // ── Render principal ──────────────────────────────────────────────────
   return (
     <>
-      {/* Overlay para cerrar con click fuera del panel */}
+      {/* Overlay para cerrar con click fuera del panel.
+          zIndex: 35 — DEBAJO del header (z-index: 45 en globals.css) para que
+          el toggle de idioma siga siendo clickeable mientras el panel está abierto.
+          El panel mismo usa zIndex: 50 (definido abajo). */}
       <div
         onClick={onClose}
-        style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 40 }}
+        style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 35 }}
       />
 
       {/* Panel lateral derecho — mismas dimensiones que ResourcePanel */}

@@ -88,7 +88,8 @@ export default function SettingsPanel({ onClose }) {
 
   return (
     <>
-      <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 40 }} />
+      {/* Overlay: zIndex 35 — debajo del header (45) para no bloquear el toggle de idioma */}
+      <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 35 }} />
       <div style={{
         position: 'fixed', top: 0, right: 0, bottom: 0, width: 360,
         background: 'var(--bg)', borderLeft: '1px solid var(--border)',

@@ -26,6 +26,12 @@
  *   - Topic.jsx lo sigue usando localmente para el botón "Recursos" de la página
  *   - Ambos usos son compatibles porque la API de props no cambió
  *
+ * ── i18n ──────────────────────────────────────────────────────────────────
+ *   - Todos los strings de UI pasan por t() de react-i18next
+ *   - Cada sub-componente importa useTranslation() propio para que React
+ *     re-renderice automáticamente al cambiar el idioma del header
+ *   - Las keys viven en el namespace "resources" de es.json y en.json
+ *
  * Props:
  *   topic   {Object|null}  — topic del catálogo ({ id, name, icon, description })
  *                            Si es null, arranca en modo picker
@@ -33,18 +39,17 @@
  */
 
 import { useState, useEffect } from 'react'
-import { useStore } from '../../store/index.jsx'
-import { TOPICS } from '../../data/topics.js'
+import { useTranslation }      from 'react-i18next'  // ← i18n: traduce todos los strings de UI
+import { useStore }            from '../../store/index.jsx'
+import { TOPICS }              from '../../data/topics.js'
 import { RoadmapPanelWithStore } from './RoadmapPanel.jsx'
 
 // ─── Constantes de la API de Groq ─────────────────────────────────────────
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions'
 const MODEL    = 'llama-3.3-70b-versatile'
 
-// ─── Etiquetas de tier ────────────────────────────────────────────────────
-const TIER_LABEL = { 1: '🔥 Crítico', 2: '⭐ Importante', 3: '💡 Diferenciador' }
-
 // ─── Íconos y colores por tipo de recurso ────────────────────────────────
+// Estos no se traducen: son íconos universales y clasificaciones técnicas.
 const TYPE_ICONS = {
   docs: '📄', tutorial: '🎓', video: '▶️',
   article: '📰', repo: '💻', course: '🏫', cheatsheet: '⚡',
@@ -124,8 +129,12 @@ function Skeleton() {
 /**
  * Tarjeta individual de un recurso de aprendizaje.
  * Muestra título, tipo, fuente, descripción y botón para abrir en nueva pestaña.
+ *
+ * i18n: usa useTranslation() para "gratis" (resources.free)
+ *       y el botón "Abrir en nueva pestaña" (resources.openNewTab).
  */
 function ResourceCard({ resource }) {
+  const { t }            = useTranslation()   // ← i18n: badge "gratis" y botón de apertura
   const [hovered, setHovered] = useState(false)
   const icon  = TYPE_ICONS[resource.type]  || '🔗'
   const color = TYPE_COLORS[resource.type] || 'var(--primary)'
@@ -150,7 +159,12 @@ function ResourceCard({ resource }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
             <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--subtle)' }}>{getDomain(resource.url)}</span>
             <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 8, padding: '1px 5px', border: `1px solid ${color}`, color, textTransform: 'uppercase' }}>{resource.type}</span>
-            {resource.free && <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 8, padding: '1px 5px', border: '1px solid var(--green)', color: 'var(--green)', textTransform: 'uppercase' }}>gratis</span>}
+            {/* Badge "gratis/free" — traducido según idioma activo */}
+            {resource.free && (
+              <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 8, padding: '1px 5px', border: '1px solid var(--green)', color: 'var(--green)', textTransform: 'uppercase' }}>
+                {t('resources.free')}
+              </span>
+            )}
           </div>
         </div>
       </div>
@@ -162,7 +176,8 @@ function ResourceCard({ resource }) {
           onClick={() => window.open(resource.url, '_blank', 'noopener,noreferrer')}
           style={{ padding: '5px 12px', background: hovered ? color : 'var(--card)', border: `1px solid ${color}`, color: hovered ? '#000' : color, cursor: 'pointer', fontFamily: 'Space Mono, monospace', fontSize: 10, fontWeight: 700, transition: 'all 0.15s', display: 'inline-flex', alignItems: 'center', gap: 5 }}
         >
-          Abrir en nueva pestaña ↗
+          {/* Texto del botón traducido — "Abrir en nueva pestaña" / "Open in new tab" */}
+          {t('resources.openNewTab')}
         </button>
       </div>
     </div>
@@ -178,9 +193,14 @@ function ResourceCard({ resource }) {
  * Esto conecta los recursos con el estado real del usuario: si el score
  * es bajo, el usuario entiende inmediatamente POR QUÉ está buscando recursos.
  *
+ * i18n: usa useTranslation() para todas las etiquetas de progreso.
+ *       El locale de la fecha cambia según el idioma activo (es-AR / en-US).
+ *
  * @param {{ completed, total, lastScore, lastSeen }} progress — progreso del topic
  */
 function TopicProgressCard({ progress }) {
+  const { t, i18n } = useTranslation()   // ← i18n: etiquetas + locale de fecha
+
   if (!progress || progress.completed === 0) return null
 
   // Color del score según rendimiento
@@ -190,20 +210,23 @@ function TopicProgressCard({ progress }) {
       ? 'var(--primary)'
       : 'var(--red)'
 
+  // Etiqueta de nivel — usa t() para responder al toggle de idioma
   const scoreLabel = progress.lastScore >= 8
-    ? 'Buen nivel — seguí repasando'
+    ? t('resources.goodLevel')
     : progress.lastScore >= 5
-      ? 'En progreso — estos recursos te ayudan'
-      : 'Necesita refuerzo — buen momento para estudiar'
+      ? t('resources.inProgress')
+      : t('resources.needsWork')
 
-  const lastSeen = progress.lastSeen
-    ? new Date(progress.lastSeen).toLocaleDateString('es-AR', { day: '2-digit', month: 'short' })
+  // Fecha adaptada al idioma activo: es-AR para español, en-US para inglés
+  const dateLocale = i18n.language === 'en' ? 'en-US' : 'es-AR'
+  const lastSeen   = progress.lastSeen
+    ? new Date(progress.lastSeen).toLocaleDateString(dateLocale, { day: '2-digit', month: 'short' })
     : null
 
   return (
     <div style={{ margin: '0 16px 12px', padding: '12px 14px', background: 'var(--surface)', border: `1px solid ${scoreColor}`, borderLeft: `3px solid ${scoreColor}` }}>
       <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--subtle)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 8 }}>
-        Tu progreso en este tema
+        {t('resources.progressTitle')}
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
         {/* Score */}
@@ -211,22 +234,29 @@ function TopicProgressCard({ progress }) {
           <div style={{ fontFamily: 'Syne, sans-serif', fontWeight: 800, fontSize: 22, color: scoreColor, lineHeight: 1 }}>
             {progress.lastScore ?? '—'}<span style={{ fontSize: 12, color: 'var(--subtle)' }}>/10</span>
           </div>
-          <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 8, color: 'var(--subtle)', marginTop: 2 }}>último score</div>
+          <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 8, color: 'var(--subtle)', marginTop: 2 }}>
+            {t('resources.lastScore')}
+          </div>
         </div>
-        {/* Sesiones */}
+        {/* Sesiones / Sessions */}
         <div style={{ textAlign: 'center' }}>
           <div style={{ fontFamily: 'Syne, sans-serif', fontWeight: 800, fontSize: 22, color: 'var(--text)', lineHeight: 1 }}>
             {progress.completed}
           </div>
-          <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 8, color: 'var(--subtle)', marginTop: 2 }}>sesiones</div>
+          <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 8, color: 'var(--subtle)', marginTop: 2 }}>
+            {/* Plural manual: 1 sesión / 2 sesiones — o "1 session / 2 sessions" en EN */}
+            {progress.completed === 1 ? t('resources.session') : t('resources.sessions')}
+          </div>
         </div>
-        {/* Última vez */}
+        {/* Última vez / Last practice */}
         {lastSeen && (
           <div style={{ textAlign: 'center' }}>
             <div style={{ fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: 13, color: 'var(--text)', lineHeight: 1 }}>
               {lastSeen}
             </div>
-            <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 8, color: 'var(--subtle)', marginTop: 2 }}>última práctica</div>
+            <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 8, color: 'var(--subtle)', marginTop: 2 }}>
+              {t('resources.lastPractice')}
+            </div>
           </div>
         )}
       </div>
@@ -247,12 +277,16 @@ function TopicProgressCard({ progress }) {
  *   - Verde → score ≥ 7 (fortaleza)
  *   - Gris → nunca practicado
  *
+ * i18n: usa useTranslation() para las etiquetas de tier ("Crítico"/"Critical"),
+ *       el badge "Sin iniciar"/"Not started" y el conteo de sesiones.
+ *
  * @param {Object}   topic    — topic del catálogo
  * @param {Object}   progress — estado global de progreso (state.progress)
  * @param {Function} onSelect — callback cuando el usuario hace click
  * @param {boolean}  isWeak   — si true, se destaca visualmente como punto débil
  */
 function TopicPickerCard({ topic, progress, onSelect, isWeak }) {
+  const { t }            = useTranslation()   // ← i18n: tier labels, badges de sesión
   const [hovered, setHovered] = useState(false)
   const p = progress[topic.id]
 
@@ -267,18 +301,27 @@ function TopicPickerCard({ topic, progress, onSelect, isWeak }) {
     : score >= 5 ? 'var(--primary)'
     : 'var(--red)'
 
-  // Badge de score
+  // Mapa de etiquetas de tier — usa t() para responder al idioma activo
+  // Cada tier tiene un ícono universal + etiqueta traducida
+  const TIER_LABEL = {
+    1: t('resources.tier1'),
+    2: t('resources.tier2'),
+    3: t('resources.tier3'),
+  }
+
+  // Badge de score — "Sin iniciar" / "Not started" o "X/10 · N sesión/es"
   function ScoreBadge() {
     if (!hasProgress) {
       return (
         <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--muted)', padding: '2px 6px', border: '1px solid var(--border)' }}>
-          Sin iniciar
+          {t('resources.notStarted')}
         </span>
       )
     }
     return (
       <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: accentColor, padding: '2px 6px', border: `1px solid ${accentColor}`, fontWeight: 700 }}>
-        {score}/10 · {p.completed} {p.completed === 1 ? 'sesión' : 'sesiones'}
+        {/* "X/10 · 1 sesión" / "X/10 · 2 sesiones" — plural manual */}
+        {score}/10 · {p.completed} {p.completed === 1 ? t('resources.session') : t('resources.sessions')}
       </span>
     )
   }
@@ -332,13 +375,18 @@ function TopicPickerCard({ topic, progress, onSelect, isWeak }) {
  * Si el usuario aún no practicó ningún tema, muestra todos como "sin iniciar"
  * organizados por tier — mostrando primero los temas críticos (tier 1).
  *
+ * i18n: usa useTranslation() para los headers de sección ("Tus puntos débiles" /
+ *       "Your weak spots") que cambian con el toggle de idioma.
+ *
  * @param {Object}   progress — estado global de progreso (state.progress)
  * @param {Function} onSelect — callback que recibe el topic seleccionado
  */
 function TopicPicker({ progress, onSelect }) {
+  const { t } = useTranslation()   // ← i18n: headers de las dos secciones
+
   // Separo temas débiles (sin practicar o score < 7) de fortalezas (score ≥ 7)
-  const weak = TOPICS.filter(t => {
-    const p = progress[t.id]
+  const weak = TOPICS.filter(tp => {
+    const p = progress[tp.id]
     if (!p || p.completed === 0) return true   // nunca practicado
     return (p.lastScore || 0) < 7              // score insuficiente
   }).sort((a, b) => {
@@ -349,8 +397,8 @@ function TopicPicker({ progress, onSelect }) {
     return sa - sb  // el score más bajo primero
   })
 
-  const strong = TOPICS.filter(t => {
-    const p = progress[t.id]
+  const strong = TOPICS.filter(tp => {
+    const p = progress[tp.id]
     return p && p.completed > 0 && (p.lastScore || 0) >= 7
   }).sort((a, b) => {
     // Fortalezas: las de mayor score primero (inspirador verlas bien)
@@ -362,29 +410,29 @@ function TopicPicker({ progress, onSelect }) {
   return (
     <div style={{ padding: 16 }}>
 
-      {/* ── Sección puntos débiles ── */}
+      {/* ── Sección puntos débiles — "Tus puntos débiles" / "Your weak spots" ── */}
       {weak.length > 0 && (
         <div style={{ marginBottom: 20 }}>
           <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--subtle)', textTransform: 'uppercase', letterSpacing: '0.15em', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span>⚠️</span> Tus puntos débiles — estudiá primero
+            {t('resources.weakTopics')}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {weak.map(t => (
-              <TopicPickerCard key={t.id} topic={t} progress={progress} onSelect={onSelect} isWeak />
+            {weak.map(tp => (
+              <TopicPickerCard key={tp.id} topic={tp} progress={progress} onSelect={onSelect} isWeak />
             ))}
           </div>
         </div>
       )}
 
-      {/* ── Sección fortalezas ── */}
+      {/* ── Sección fortalezas — "Tus fortalezas" / "Your strengths" ── */}
       {strong.length > 0 && (
         <div>
           <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--subtle)', textTransform: 'uppercase', letterSpacing: '0.15em', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span>✅</span> Tus fortalezas — para repasar
+            {t('resources.strongTopics')}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {strong.map(t => (
-              <TopicPickerCard key={t.id} topic={t} progress={progress} onSelect={onSelect} isWeak={false} />
+            {strong.map(tp => (
+              <TopicPickerCard key={tp.id} topic={tp} progress={progress} onSelect={onSelect} isWeak={false} />
             ))}
           </div>
         </div>
@@ -406,10 +454,19 @@ function TopicPicker({ progress, onSelect }) {
  * vino del picker (si `topic` fue null al montar el componente, mostramos
  * el botón de volver; si fue pasado por prop, no lo mostramos).
  *
+ * i18n: usa useTranslation() para todos los textos de cabecera, subtítulos,
+ *       footer y mensajes de error. Responde en tiempo real al toggle ES/EN.
+ *
+ * ── Nota sobre el overlay ────────────────────────────────────────────────
+ * El overlay (zIndex: 35) está DEBAJO del header (zIndex: 45 en globals.css).
+ * Esto garantiza que el botón de idioma en el header siga siendo clickeable
+ * mientras el panel está abierto — bug histórico corregido en marzo 2026.
+ *
  * @param {Object|null} topic   — topic del catálogo o null para modo picker
  * @param {Function}    onClose — cierra el panel
  */
 export default function ResourcePanel({ topic, onClose }) {
+  const { t }    = useTranslation()   // ← i18n: cabecera, subtítulos, footer, errores
   const { state } = useStore()
   const progress  = state.progress
 
@@ -445,12 +502,14 @@ export default function ResourcePanel({ topic, onClose }) {
         const res = await fetchResources(selectedTopic.name, selectedTopic.description)
         setResources(res)
       } catch {
-        setError('No se pudieron cargar los recursos. Revisá tu API key de Groq en el archivo .env')
+        // Error traducido — "No se pudieron cargar" / "Could not load resources"
+        setError(t('resources.errorLoad'))
       } finally {
         setLoading(false)
       }
     }
     load()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedTopic?.id])
 
   // Progreso del usuario para el topic actualmente seleccionado
@@ -465,10 +524,14 @@ export default function ResourcePanel({ topic, onClose }) {
 
   return (
     <>
-      {/* Overlay semitransparente — click para cerrar */}
-      <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 40 }} />
+      {/* ── Overlay semitransparente ──
+          zIndex: 35 — DEBAJO del header (z-index: 45 en globals.css).
+          Esto garantiza que el toggle de idioma en el header sea clickeable
+          mientras el panel está abierto.
+          Click en el overlay → cierra el panel. */}
+      <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 35 }} />
 
-      {/* Panel deslizable */}
+      {/* Panel deslizable — zIndex: 50, sobre el overlay pero bajo un eventual modal */}
       <div style={{ position: 'fixed', top: 0, right: 0, bottom: 0, width: 400, background: 'var(--bg)', borderLeft: '2px solid var(--primary)', zIndex: 50, display: 'flex', flexDirection: 'column', overflowY: 'auto', animation: 'slideInRight 0.25s ease-out' }}>
 
         {/* ── Cabecera del panel ── */}
@@ -483,7 +546,8 @@ export default function ResourcePanel({ topic, onClose }) {
                 onMouseEnter={e => e.currentTarget.style.color = 'var(--primary)'}
                 onMouseLeave={e => e.currentTarget.style.color = 'var(--subtle)'}
               >
-                ← Recursos
+                {/* "← Recursos" / "← Resources" */}
+                {t('resources.backResources')}
               </button>
             )}
             {!showRoadmap && selectedTopic && startedInPickerMode && (
@@ -493,27 +557,28 @@ export default function ResourcePanel({ topic, onClose }) {
                 onMouseEnter={e => e.currentTarget.style.color = 'var(--primary)'}
                 onMouseLeave={e => e.currentTarget.style.color = 'var(--subtle)'}
               >
-                ← Temas
+                {/* "← Temas" / "← Topics" */}
+                {t('resources.backTopics')}
               </button>
             )}
 
-            {/* Título del panel según el modo */}
+            {/* Título del panel según el modo — se traduce automáticamente */}
             <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--subtle)', textTransform: 'uppercase', letterSpacing: '0.15em', marginBottom: 3 }}>
               {showRoadmap
-                ? '📖 Mi roadmap de aprendizaje'
-                : selectedTopic ? 'Recursos de aprendizaje' : '📚 Buscá qué estudiar'}
+                ? t('resources.roadmapLabel')
+                : selectedTopic ? t('resources.title') : t('resources.pickerLabel')}
             </div>
 
             <div style={{ fontFamily: 'Syne, sans-serif', fontWeight: 800, fontSize: 15, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 8, overflow: 'hidden' }}>
               {showRoadmap ? (
-                <span>Roadmap Personalizado</span>
+                <span>{t('resources.roadmapTitle')}</span>
               ) : selectedTopic ? (
                 <>
                   <span>{selectedTopic.icon}</span>
                   <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{selectedTopic.name}</span>
                 </>
               ) : (
-                <span>Elegí un tema para estudiar</span>
+                <span>{t('resources.pickerTitle')}</span>
               )}
             </div>
           </div>
@@ -527,14 +592,14 @@ export default function ResourcePanel({ topic, onClose }) {
           </button>
         </div>
 
-        {/* ── Subtítulo contextual ── */}
+        {/* ── Subtítulo contextual — describe el modo activo al usuario ── */}
         <div style={{ padding: '10px 20px', borderBottom: '1px solid var(--border)', background: 'var(--surface)' }}>
           <p style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)', margin: 0, lineHeight: 1.6 }}>
             {showRoadmap
-              ? 'Generado por IA en base a tu perfil y progreso. Exportable como PDF con índice.'
+              ? t('resources.roadmapSubtitle')
               : selectedTopic
-                ? 'Artículos, docs y tutoriales seleccionados por IA. Cada link abre en pestaña nueva.'
-                : 'Tus puntos débiles aparecen primero. Hacé click en un tema para ver sus recursos.'}
+                ? t('resources.resourceSubtitle')
+                : t('resources.pickerSubtitle')}
           </p>
         </div>
 
@@ -549,7 +614,7 @@ export default function ResourcePanel({ topic, onClose }) {
           {/* MODO PICKER: selector de temas con progreso */}
           {!showRoadmap && !selectedTopic && (
             <>
-              {/* Banner de Roadmap — acceso rápido */}
+              {/* Banner de Roadmap — acceso rápido al generador de roadmap */}
               <div
                 onClick={() => setShowRoadmap(true)}
                 style={{ margin: '16px 16px 0', padding: '14px 16px', background: 'var(--surface)', border: '1px solid var(--primary)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 12, transition: 'all 0.15s' }}
@@ -559,10 +624,10 @@ export default function ResourcePanel({ topic, onClose }) {
                 <span style={{ fontSize: 22, flexShrink: 0 }}>📖</span>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: 13, color: 'var(--text)', marginBottom: 3 }}>
-                    Generar Mi Roadmap PDF
+                    {t('resources.roadmapBannerTitle')}
                   </div>
                   <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--subtle)' }}>
-                    Roadmap 0→100 personalizado · Exportar como PDF
+                    {t('resources.roadmapBannerDesc')}
                   </div>
                 </div>
                 <span style={{ color: 'var(--primary)', fontSize: 14, flexShrink: 0 }}>→</span>
@@ -572,7 +637,7 @@ export default function ResourcePanel({ topic, onClose }) {
             </>
           )}
 
-          {/* MODO RECURSO: progreso + recursos */}
+          {/* MODO RECURSO: progreso del usuario + lista de recursos IA */}
           {!showRoadmap && selectedTopic && (
             <>
               {/* Tarjeta de progreso del usuario (solo si ya practicó este tema) */}
@@ -603,8 +668,8 @@ export default function ResourcePanel({ topic, onClose }) {
         {!showRoadmap && (
           <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border)', background: 'var(--surface)', fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--subtle)', textAlign: 'center' }}>
             {selectedTopic
-              ? 'Recursos sugeridos por Groq · Verificá siempre el contenido'
-              : `${TOPICS.length} temas disponibles · Seleccioná uno para ver recursos`}
+              ? t('resources.footerResources')
+              : t('resources.footerPicker', { count: TOPICS.length })}
           </div>
         )}
       </div>

@@ -99,6 +99,12 @@ export default function ResetPassword() {
    *
    * supabase.auth.updateUser() usa la sesión temporal de recovery
    * establecida por el token del hash. Si la sesión expiró, devuelve error.
+   *
+   * Verificamos explícitamente que la sesión de recovery sigue activa ANTES
+   * de intentar el update. Esto cubre el caso donde el usuario abrió el link,
+   * dejó la pestaña abierta por más de 1 hora (el token de Supabase expira),
+   * y recién entonces intentó cambiar la contraseña. Sin esta verificación,
+   * updateUser() devolvería un error genérico difícil de interpretar.
    */
   async function handleSubmit(e) {
     e.preventDefault()
@@ -114,6 +120,17 @@ export default function ResetPassword() {
 
     setLoading(true)
     setError(null)
+
+    // Verificación explícita de sesión antes del update
+    // El token de recovery de Supabase expira en ~1 hora.
+    // Si el usuario tardó demasiado, esta verificación lo detecta
+    // y muestra un mensaje claro en lugar de un error genérico.
+    const { data: { session: currentSession } } = await supabase.auth.getSession()
+    if (!currentSession?.user) {
+      setLoading(false)
+      setError('El link de recuperación expiró. Solicitá uno nuevo.')
+      return
+    }
 
     const { error: updateError } = await supabase.auth.updateUser({ password })
 

@@ -15,10 +15,12 @@
 
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { supabase } from '../lib/supabase'
 import Header from '../components/ui/Header.jsx'
 
 export default function ForgotPassword() {
+  const { t } = useTranslation()
   const [email,   setEmail]   = useState('')
   const [loading, setLoading] = useState(false)
   const [error,   setError]   = useState(null)
@@ -45,8 +47,8 @@ export default function ForgotPassword() {
       const isRateLimit = resetError.status === 429 || resetError.message?.includes('rate')
       setError(
         isRateLimit
-          ? 'Demasiados intentos. Esperá unos minutos antes de volver a pedir el link.'
-          : 'Hubo un problema al enviar el email. Intentá de nuevo en unos minutos.'
+          ? t('auth.forgotErrorLimit')
+          : t('auth.forgotErrorGeneric')
       )
       return
     }
@@ -66,14 +68,14 @@ export default function ForgotPassword() {
             <div className="flex items-center gap-3 mb-4">
               <span className="w-8 h-px bg-forge-amber" />
               <span className="font-mono text-forge-subtle text-xs uppercase tracking-widest">
-                Recuperar acceso
+                {t('auth.forgotLabel')}
               </span>
             </div>
             <h1 className="font-display font-extrabold text-3xl text-forge-text">
-              ¿Olvidaste tu contraseña?
+              {t('auth.forgotTitle')}
             </h1>
             <p className="font-mono text-forge-subtle text-sm mt-2">
-              Ingresá tu email y te mandamos un link para resetearla.
+              {t('auth.forgotSubtitle')}
             </p>
           </div>
 
@@ -87,17 +89,17 @@ export default function ForgotPassword() {
                   style={{ background: 'color-mix(in srgb, var(--green) 10%, transparent)' }}
                 >
                   <p className="font-mono text-forge-green text-xs leading-relaxed">
-                    ✓ Email enviado a <strong>{email}</strong>.<br />
-                    Revisá tu bandeja (y el spam). El link expira en 1 hora.
+                    {t('auth.forgotSuccess', { email })}<br />
+                    {t('auth.forgotSuccessNote')}
                   </p>
                 </div>
                 <p className="font-mono text-forge-subtle text-xs text-center">
-                  ¿No llegó?{' '}
+                  {t('auth.forgotDidntArrive')}{' '}
                   <button
                     onClick={() => setSent(false)}
                     className="text-forge-amber hover:underline transition-colors"
                   >
-                    Reintentar
+                    {t('auth.forgotRetry')}
                   </button>
                 </p>
               </div>
@@ -109,14 +111,14 @@ export default function ForgotPassword() {
                     htmlFor="email"
                     className="block font-mono text-forge-subtle text-xs uppercase tracking-widest mb-2"
                   >
-                    Email
+                    {t('auth.email')}
                   </label>
                   <input
                     id="email"
                     type="email"
                     value={email}
                     onChange={e => setEmail(e.target.value)}
-                    placeholder="tu@email.com"
+                    placeholder={t('auth.emailPlaceholder')}
                     required
                     autoComplete="email"
                     autoFocus
@@ -138,7 +140,7 @@ export default function ForgotPassword() {
                   disabled={loading || !email.trim()}
                   className="btn-primary w-full"
                 >
-                  {loading ? 'Enviando...' : 'Enviar link de recuperación →'}
+                  {loading ? t('auth.forgotLoading') : t('auth.forgotBtn')}
                 </button>
               </form>
             )}
@@ -150,7 +152,7 @@ export default function ForgotPassword() {
               to="/login"
               className="text-forge-amber hover:underline transition-colors"
             >
-              ← Volver al inicio de sesión
+              {t('auth.backToLogin')}
             </Link>
           </p>
 
@@ -158,8 +160,8 @@ export default function ForgotPassword() {
       </main>
 
       <footer className="forge-footer">
-        <span>DevForge — preparación técnica</span>
-        <span>Powered by Claude</span>
+        <span>{t('landing.footer')}</span>
+        <span>{t('landing.poweredBy')}</span>
       </footer>
     </div>
   )

@@ -2,32 +2,26 @@ import { useNavigate } from 'react-router-dom'
 import { useStore } from '../store/index.jsx'
 import { useAuth } from '../context/AuthContext'
 import { useState, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import Header from '../components/ui/Header.jsx'
 
 // ─── Datos de las ofertas de referencia ──────────────────
 const OFFERS = [
   {
-    tag: 'Oferta 1',
+    tagKey: 'Oferta 1',
     role: 'Python / AWS Engineer',
     skills: ['Python', 'AWS Lambda', 'ECS', 'API Gateway', 'S3', 'RDS', 'CI/CD'],
   },
   {
-    tag: 'Oferta 2',
+    tagKey: 'Oferta 2',
     role: 'Full Stack Python + Next.js',
     skills: ['Django', 'Flask', 'Next.js', 'Node.js', 'REST APIs', 'SQL', 'Docker'],
   },
   {
-    tag: 'Oferta 3',
+    tagKey: 'Oferta 3',
     role: 'Agentic Python Engineer',
     skills: ['FastAPI', 'Claude Code', 'Copilot', 'AI Agents', 'Agile', 'CI/CD'],
   },
-]
-
-const STATS = [
-  { value: '3',    label: 'Ofertas analizadas' },
-  { value: '47',   label: 'Temas técnicos' },
-  { value: '200+', label: 'Preguntas de práctica' },
-  { value: 'AI',   label: 'Feedback instantáneo' },
 ]
 
 function SkillBar({ skill, delay }) {
@@ -75,6 +69,7 @@ export default function Landing() {
   const navigate           = useNavigate()
   const { state }          = useStore()
   const { isAuthenticated } = useAuth() // sabemos si hay sesión activa
+  const { t }              = useTranslation()
   const [titleVisible, setTitleVisible] = useState(false)
 
   useEffect(() => {
@@ -109,8 +104,8 @@ export default function Landing() {
    */
   function getMainLabel() {
     return isAuthenticated && alreadyOnboarded
-      ? 'Continuar entrenamiento →'
-      : 'Empezar ahora →'
+      ? t('landing.ctaContinue')
+      : t('landing.cta')
   }
 
   return (
@@ -129,14 +124,14 @@ export default function Landing() {
               onClick={() => navigate('/dashboard')}
               style={{ padding: '7px 13px', background: 'transparent', border: '1px solid var(--border)', color: 'var(--subtle)', cursor: 'pointer', fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: 12, whiteSpace: 'nowrap' }}
             >
-              Dashboard →
+              {t('landing.ctaDashboard')}
             </button>
           ) : (
             <button
               onClick={() => navigate(getDestination())}
               style={{ padding: '7px 13px', background: 'var(--primary)', border: 'none', color: '#000', cursor: 'pointer', fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: 12, whiteSpace: 'nowrap' }}
             >
-              Empezar →
+              {t('landing.cta')}
             </button>
           )
         }
@@ -152,7 +147,7 @@ export default function Landing() {
           >
             <span className="w-8 h-px bg-forge-amber" />
             <span className="font-mono text-forge-subtle text-xs uppercase tracking-widest">
-              Preparación técnica para entrevistas
+              {t('landing.label')}
             </span>
           </div>
 
@@ -161,9 +156,7 @@ export default function Landing() {
               tracking-tight mb-6 transition-all duration-700 delay-100
               ${titleVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}
           >
-            <span className="text-forge-text block">Forjá tus</span>
-            <span className="text-forge-amber block">habilidades</span>
-            <span className="text-forge-text block">técnicas.</span>
+            <span className="text-forge-amber block">{t('landing.title')}</span>
           </h1>
 
           <p
@@ -171,8 +164,7 @@ export default function Landing() {
               transition-all duration-700 delay-200
               ${titleVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}
           >
-            Practicá preguntas reales basadas en ofertas laborales concretas.
-            Feedback instantáneo con IA. Seguí tu progreso hasta la entrevista.
+            {t('landing.subtitle')}
           </p>
 
           <div
@@ -194,7 +186,7 @@ export default function Landing() {
                   document.getElementById('ofertas').scrollIntoView({ behavior: 'smooth' })
                 }}
               >
-                Ver ofertas analizadas
+                {t('landing.viewOffers')}
               </button>
             )}
           </div>
@@ -203,9 +195,14 @@ export default function Landing() {
         {/* ── Stats ── */}
         <section className="border-b border-forge-border">
           <div className="max-w-5xl mx-auto w-full grid grid-cols-2 md:grid-cols-4">
-            {STATS.map((stat, i) => (
+            {[
+              { value: '3',    key: 'stat1' },
+              { value: '47',   key: 'stat2' },
+              { value: '200+', key: 'stat3' },
+              { value: 'AI',   key: 'stat4' },
+            ].map((stat, i) => (
               <div
-                key={stat.label}
+                key={stat.key}
                 className="px-6 py-8 border-r border-forge-border last:border-r-0 animate-fade-in"
                 style={{ animationDelay: `${400 + i * 80}ms`, animationFillMode: 'both' }}
               >
@@ -213,7 +210,7 @@ export default function Landing() {
                   {stat.value}
                 </div>
                 <div className="font-mono text-forge-subtle text-xs uppercase tracking-wider">
-                  {stat.label}
+                  {t(`landing.${stat.key}`).split(' · ').slice(1).join(' · ')}
                 </div>
               </div>
             ))}
@@ -223,10 +220,10 @@ export default function Landing() {
         {/* ── Ofertas ── */}
         <section id="ofertas" className="border-b border-forge-border px-6 py-16">
           <div className="max-w-5xl mx-auto w-full">
-            <div className="divider mb-10">Ofertas de referencia</div>
+            <div className="divider mb-10">{t('landing.offersTitle')}</div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {OFFERS.map((offer, i) => (
-                <OfferCard key={offer.tag} offer={offer} index={i} />
+                <OfferCard key={offer.tagKey} offer={{ ...offer, tag: offer.tagKey }} index={i} />
               ))}
             </div>
           </div>
@@ -235,24 +232,12 @@ export default function Landing() {
         {/* ── Cómo funciona ── */}
         <section className="border-b border-forge-border px-6 py-16">
           <div className="max-w-5xl mx-auto w-full">
-            <div className="divider mb-10">Cómo funciona</div>
+            <div className="divider mb-10">{t('landing.howTitle')}</div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
               {[
-                {
-                  step: '01',
-                  title: 'Pegás las ofertas',
-                  desc: 'Copiás el texto de los puestos a los que querés aplicar. La IA extrae automáticamente el stack técnico requerido.',
-                },
-                {
-                  step: '02',
-                  title: 'Practicás por temas',
-                  desc: 'Preguntas ordenadas por Tier y dificultad. Hints progresivos cuando te trabás. Siempre en contexto de entrevista real.',
-                },
-                {
-                  step: '03',
-                  title: 'Recibís feedback',
-                  desc: 'Claude evalúa tu respuesta: qué estuvo bien, qué mejorar, el concepto clave que faltó y una pregunta de profundización.',
-                },
+                { step: '01', titleKey: 'step1Title', descKey: 'step1Desc' },
+                { step: '02', titleKey: 'step2Title', descKey: 'step2Desc' },
+                { step: '03', titleKey: 'step3Title', descKey: 'step3Desc' },
               ].map((item, i) => (
                 <div
                   key={item.step}
@@ -263,10 +248,10 @@ export default function Landing() {
                     {item.step}
                   </div>
                   <h3 className="font-display font-bold text-forge-text text-xl mb-2">
-                    {item.title}
+                    {t(`landing.${item.titleKey}`).split(' · ').slice(1).join(' · ')}
                   </h3>
                   <p className="font-mono text-forge-subtle text-sm leading-relaxed">
-                    {item.desc}
+                    {t(`landing.${item.descKey}`)}
                   </p>
                 </div>
               ))}
@@ -278,11 +263,10 @@ export default function Landing() {
         <section className="px-6 py-20">
           <div className="max-w-5xl mx-auto w-full flex flex-col items-center text-center gap-6">
             <h2 className="font-display font-extrabold text-4xl md:text-5xl text-forge-text leading-tight">
-              Tu próxima entrevista<br />
-              <span className="text-forge-amber">empieza acá.</span>
+              <span className="text-forge-amber">{t('landing.finalTitle')}</span>
             </h2>
             <p className="font-mono text-forge-subtle text-sm max-w-md">
-              Sin teoría vacía. Solo práctica deliberada con las tecnologías que te van a preguntar.
+              {t('landing.finalSubtitle')}
             </p>
             {/* CTA final — misma lógica que el hero */}
             <button
@@ -297,8 +281,8 @@ export default function Landing() {
 
       {/* ── Footer ── */}
       <footer className="forge-footer">
-        <span>DevForge — preparación técnica</span>
-        <span>Powered by Claude</span>
+        <span>{t('landing.footer')}</span>
+        <span>{t('landing.poweredBy')}</span>
       </footer>
 
     </div>

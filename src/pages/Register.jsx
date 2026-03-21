@@ -23,6 +23,7 @@
 import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { useTranslation } from 'react-i18next'
 import Header from '../components/ui/Header.jsx'
 
 /**
@@ -34,6 +35,7 @@ import Header from '../components/ui/Header.jsx'
  *                            quiere intentar con otro email
  */
 function ConfirmationMessage({ email, onBack }) {
+  const { t } = useTranslation()
   return (
     <div className="w-full max-w-md animate-slide-up">
 
@@ -42,17 +44,16 @@ function ConfirmationMessage({ email, onBack }) {
         <div className="flex items-center gap-3 mb-4">
           <span className="w-8 h-px bg-forge-amber" />
           <span className="font-mono text-forge-subtle text-xs uppercase tracking-widest">
-            Verificación
+            {t('auth.verifyLabel')}
           </span>
         </div>
         <h1 className="font-display font-extrabold text-3xl text-forge-text">
-          Revisá tu email
+          {t('auth.verifyTitle')}
         </h1>
       </div>
 
       {/* Card con el mensaje */}
       <div className="card border-forge-border">
-        {/* Ícono de email estilo ASCII/terminal */}
         <div
           className="font-mono text-forge-amber text-4xl font-bold mb-4 opacity-60"
           aria-hidden="true"
@@ -61,30 +62,26 @@ function ConfirmationMessage({ email, onBack }) {
         </div>
 
         <p className="font-mono text-forge-subtle text-sm leading-relaxed mb-4">
-          Te enviamos un link de confirmación a:
+          {t('auth.verifySent')}
         </p>
 
-        {/* Email destacado */}
         <p className="font-mono text-forge-text text-sm font-bold mb-6 px-3 py-2 border border-forge-border bg-forge-bg">
           {email}
         </p>
 
         <p className="font-mono text-forge-subtle text-xs leading-relaxed mb-6">
-          Hacé click en el link del email para activar tu cuenta.
-          Después vas a poder iniciar sesión normalmente.
+          {t('auth.verifyInstruction')}
         </p>
 
-        {/* Botón para volver si quieren probar con otro email */}
         <button onClick={onBack} className="btn-secondary w-full">
-          ← Usar otro email
+          {t('auth.verifyOtherEmail')}
         </button>
       </div>
 
-      {/* Link directo al login */}
       <p className="font-mono text-forge-subtle text-xs text-center mt-6">
-        ¿Ya confirmaste?{' '}
+        {t('auth.verifyConfirmed')}{' '}
         <Link to="/login" className="text-forge-amber hover:underline">
-          Iniciá sesión
+          {t('auth.loginLink')}
         </Link>
       </p>
     </div>
@@ -97,6 +94,7 @@ function ConfirmationMessage({ email, onBack }) {
 export default function Register() {
   const navigate = useNavigate()
   const { signUp } = useAuth()
+  const { t } = useTranslation()
 
   // ─── Estado del formulario ──────────────────────────────────────────────
   const [email, setEmail]             = useState('')    // campo email
@@ -115,19 +113,16 @@ export default function Register() {
    * @returns {string|null}
    */
   function validateForm() {
-    // Verificamos que el email tenga formato básico válido
     if (!email.includes('@') || !email.includes('.')) {
-      return 'Ingresá un email válido.'
+      return t('auth.errorInvalidEmail')
     }
-    // Supabase requiere mínimo 6 caracteres por defecto en la configuración base
     if (password.length < 6) {
-      return 'La contraseña debe tener al menos 6 caracteres.'
+      return t('auth.errorShortPassword')
     }
-    // Los dos campos de contraseña deben coincidir exactamente
     if (password !== confirmPassword) {
-      return 'Las contraseñas no coinciden.'
+      return t('auth.errorPasswordMatch')
     }
-    return null // sin errores
+    return null
   }
 
   /**
@@ -179,16 +174,11 @@ export default function Register() {
    */
   function translateError(message) {
     const errorMap = {
-      'User already registered':
-        'Ya existe una cuenta con ese email. ¿Querés iniciar sesión?',
-      'Password should be at least 6 characters':
-        'La contraseña debe tener al menos 6 caracteres.',
-      'Unable to validate email address: invalid format':
-        'El formato del email no es válido.',
-      'Signup is disabled':
-        'El registro está temporalmente deshabilitado.',
-      'Too many requests':
-        'Demasiados intentos. Esperá unos minutos e intentá de nuevo.',
+      'User already registered':                          t('auth.errorEmailExists'),
+      'Password should be at least 6 characters':        t('auth.errorShortPassword'),
+      'Unable to validate email address: invalid format': t('auth.errorInvalidEmailFormat'),
+      'Signup is disabled':                               t('auth.errorDisabled'),
+      'Too many requests':                                t('auth.errorRateLimit'),
     }
     return errorMap[message] ?? `Error: ${message}`
   }
@@ -217,14 +207,14 @@ export default function Register() {
               <div className="flex items-center gap-3 mb-4">
                 <span className="w-8 h-px bg-forge-amber" />
                 <span className="font-mono text-forge-subtle text-xs uppercase tracking-widest">
-                  Registro
+                  {t('auth.registerLabel')}
                 </span>
               </div>
               <h1 className="font-display font-extrabold text-3xl text-forge-text">
-                Creá tu cuenta
+                {t('auth.registerTitle')}
               </h1>
               <p className="font-mono text-forge-subtle text-sm mt-2">
-                Empezá tu preparación técnica hoy.
+                {t('auth.registerSubtitle')}
               </p>
             </div>
 
@@ -247,7 +237,7 @@ export default function Register() {
                     type="email"
                     value={email}
                     onChange={e => setEmail(e.target.value)}
-                    placeholder="tu@email.com"
+                    placeholder={t('auth.emailPlaceholder')}
                     required
                     autoComplete="email"
                     className="input-forge"
@@ -267,7 +257,7 @@ export default function Register() {
                     type="password"
                     value={password}
                     onChange={e => setPassword(e.target.value)}
-                    placeholder="Mínimo 6 caracteres"
+                    placeholder={t('auth.passwordMin')}
                     required
                     autoComplete="new-password"
                     className="input-forge"
@@ -280,14 +270,14 @@ export default function Register() {
                     htmlFor="confirm-password"
                     className="block font-mono text-forge-subtle text-xs uppercase tracking-widest mb-2"
                   >
-                    Confirmá la contraseña
+                    {t('auth.confirmPassword')}
                   </label>
                   <input
                     id="confirm-password"
                     type="password"
                     value={confirmPassword}
                     onChange={e => setConfirmPassword(e.target.value)}
-                    placeholder="Repetí la contraseña"
+                    placeholder={t('auth.repeatPassword')}
                     required
                     autoComplete="new-password"
                     className="input-forge"
@@ -320,7 +310,7 @@ export default function Register() {
                   disabled={loading}
                   className="btn-primary w-full"
                 >
-                  {loading ? 'Creando cuenta...' : 'Crear cuenta →'}
+                  {loading ? t('auth.registerLoading') : t('auth.registerBtn')}
                 </button>
 
               </form>
@@ -328,9 +318,9 @@ export default function Register() {
 
             {/* ── Link al login ── */}
             <p className="font-mono text-forge-subtle text-xs text-center mt-6">
-              ¿Ya tenés cuenta?{' '}
+              {t('auth.hasAccount')}{' '}
               <Link to="/login" className="text-forge-amber hover:underline">
-                Iniciá sesión
+                {t('auth.loginLink')}
               </Link>
             </p>
 
@@ -340,8 +330,8 @@ export default function Register() {
 
       {/* Footer */}
       <footer className="forge-footer">
-        <span>DevForge — preparación técnica</span>
-        <span>Powered by Claude</span>
+        <span>{t('landing.footer')}</span>
+        <span>{t('landing.poweredBy')}</span>
       </footer>
 
     </div>

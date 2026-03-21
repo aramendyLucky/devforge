@@ -5,6 +5,7 @@ import { StoreProvider } from './store/index.jsx'
 import { AuthProvider } from './context/AuthContext.jsx'
 import App from './App.jsx'
 import './styles/globals.css'
+import './i18n/index.js'
 
 /**
  * Árbol de providers — orden importante:

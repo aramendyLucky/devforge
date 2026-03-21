@@ -1,6 +1,7 @@
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useStore } from '../store/index.jsx'
 import { getTopicById, TOPICS } from '../data/topics.js'
+import { useTranslation } from 'react-i18next'
 import Header from '../components/ui/Header.jsx'
 
 function scoreColor(s) {
@@ -10,11 +11,11 @@ function scoreColor(s) {
   return 'var(--red)'
 }
 
-function scoreLabel(s) {
+function scoreLabel(s, t) {
   if (s == null) return '—'
-  if (s >= 8) return 'Excelente'
-  if (s >= 5) return 'Aceptable'
-  return 'A mejorar'
+  if (s >= 8) return t('interview.scoreExcellent')
+  if (s >= 5) return t('interview.scoreGood')
+  return t('interview.scoreNeedsWork')
 }
 
 function formatDuration(start, end) {
@@ -104,6 +105,7 @@ function getCatIcon(cat) {
 
 // ─── Puntos fuertes y débiles ─────────────────────────────
 function InsightPanel({ answers }) {
+  const { t }    = useTranslation()
   const answered = answers.filter(a => !a.skipped && a.score != null)
   if (!answered.length) return null
 
@@ -126,7 +128,7 @@ function InsightPanel({ answers }) {
       {/* Fortalezas */}
       <div style={{ background: 'var(--surface)', borderLeft: '3px solid var(--green)', padding: '14px 16px' }}>
         <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--green)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 12 }}>
-          ✓ Mejores respuestas
+          {t('interview.bestAnswers')}
         </div>
         {top3.map((a, i) => (
           <div key={i} style={{ display: 'flex', gap: 10, marginBottom: 8, alignItems: 'flex-start' }}>
@@ -142,7 +144,7 @@ function InsightPanel({ answers }) {
       {/* Áreas de mejora */}
       <div style={{ background: 'var(--surface)', borderLeft: '3px solid var(--red)', padding: '14px 16px' }}>
         <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--red)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 12 }}>
-          ⚠ A reforzar
+          {t('interview.reinforce')}
         </div>
         {bottom3.map((a, i) => (
           <div key={i} style={{ display: 'flex', gap: 10, marginBottom: 8, alignItems: 'flex-start' }}>
@@ -159,7 +161,7 @@ function InsightPanel({ answers }) {
       {topMissing.length > 0 && (
         <div style={{ gridColumn: '1 / -1', background: 'var(--surface)', borderLeft: '3px solid var(--primary)', padding: '14px 16px' }}>
           <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 12 }}>
-            💡 Conceptos clave que faltaron con más frecuencia
+            {t('interview.missingConcepts')}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {topMissing.map(([concept, count], i) => (
@@ -181,6 +183,7 @@ function InsightPanel({ answers }) {
 
 // ─── Detalle pregunta por pregunta ────────────────────────
 function AnswerDetail({ answers }) {
+  const { t } = useTranslation()
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       {answers.map((a, i) => (
@@ -196,8 +199,8 @@ function AnswerDetail({ answers }) {
               {/* Meta */}
               <div style={{ display: 'flex', gap: 6, marginBottom: 6, flexWrap: 'wrap', alignItems: 'center' }}>
                 <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)' }}>{a.topicIcon} {a.topicName}</span>
-                {a.skipped && <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, padding: '1px 5px', border: '1px solid var(--muted)', color: 'var(--subtle)' }}>OMITIDA</span>}
-                {!a.skipped && <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: scoreColor(a.score) }}>{scoreLabel(a.score)}</span>}
+                {a.skipped && <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, padding: '1px 5px', border: '1px solid var(--muted)', color: 'var(--subtle)' }}>{t('interview.skipped')}</span>}
+                {!a.skipped && <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: scoreColor(a.score) }}>{scoreLabel(a.score, t)}</span>}
               </div>
 
               {/* Pregunta */}
@@ -221,6 +224,7 @@ function AnswerDetail({ answers }) {
 
 // ─── Comparativa con entrevistas anteriores ───────────────
 function HistoryComparison({ interviews, currentAvg }) {
+  const { t } = useTranslation()
   if (interviews.length < 2) return null
 
   const last5 = interviews.slice(0, 5)
@@ -228,7 +232,7 @@ function HistoryComparison({ interviews, currentAvg }) {
   return (
     <div>
       <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 12 }}>
-        Evolución — últimas {last5.length} entrevistas
+        {t('interview.evolution', { count: last5.length })}
       </div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', height: 60 }}>
         {last5.reverse().map((iv, i) => {
@@ -251,6 +255,7 @@ function HistoryComparison({ interviews, currentAvg }) {
 
 // ─── InterviewResults principal ───────────────────────────
 export default function InterviewResults() {
+  const { t }      = useTranslation()
   const navigate   = useNavigate()
   const location   = useLocation()
   const { state }  = useStore()
@@ -262,8 +267,8 @@ export default function InterviewResults() {
     return (
       <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <div style={{ textAlign: 'center' }}>
-          <p style={{ fontFamily: 'Space Mono, monospace', fontSize: 12, color: 'var(--subtle)', marginBottom: 16 }}>Sin resultados disponibles.</p>
-          <button onClick={() => navigate('/dashboard')} style={{ padding: '10px 20px', background: 'var(--primary)', border: 'none', color: '#000', cursor: 'pointer', fontFamily: 'Syne, sans-serif', fontWeight: 700 }}>← Dashboard</button>
+          <p style={{ fontFamily: 'Space Mono, monospace', fontSize: 12, color: 'var(--subtle)', marginBottom: 16 }}>{t('interview.noConfig')}</p>
+          <button onClick={() => navigate('/dashboard')} style={{ padding: '10px 20px', background: 'var(--primary)', border: 'none', color: '#000', cursor: 'pointer', fontFamily: 'Syne, sans-serif', fontWeight: 700 }}>{t('history.backDashboard')}</button>
         </div>
       </div>
     )
@@ -289,17 +294,17 @@ export default function InterviewResults() {
           <ScoreCircle score={avg} size={110} />
           <div style={{ flex: 1, minWidth: 200 }}>
             <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 6 }}>
-              Resultado de la entrevista
+              {t('interview.resultLabel')}
             </div>
             <h1 style={{ fontFamily: 'Syne, sans-serif', fontWeight: 800, fontSize: 26, color: 'var(--text)', margin: '0 0 8px' }}>
-              {avg >= 8 ? '¡Listo para la entrevista real!' : avg >= 6 ? 'Buen nivel, seguí practicando.' : avg >= 4 ? 'Hay margen de mejora.' : 'Necesitás más práctica.'}
+              {avg >= 8 ? t('interview.resultExcellent') : avg >= 6 ? t('interview.resultGood') : avg >= 4 ? t('interview.resultMedium') : t('interview.resultLow')}
             </h1>
             <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', rowGap: 10 }}>
               {[
-                { label: 'Respondidas', value: answered.length },
-                { label: 'Omitidas',    value: skipped.length  },
-                { label: 'Duración',    value: formatDuration(interview.startedAt, interview.endedAt) },
-                { label: 'Nivel',       value: interview.difficulty === 'basic' ? 'Junior' : interview.difficulty === 'senior' ? 'Senior' : 'Mid-level' },
+                { label: t('interview.answeredLabel'), value: answered.length },
+                { label: t('interview.skippedLabel'), value: skipped.length  },
+                { label: t('interview.durationResultLabel'), value: formatDuration(interview.startedAt, interview.endedAt) },
+                { label: t('interview.levelLabel'), value: interview.difficulty === 'basic' ? t('interview.levelJunior') : interview.difficulty === 'senior' ? t('interview.levelSenior') : t('interview.levelMid') },
               ].map(s => (
                 <div key={s.label}>
                   <div style={{ fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: 14, color: 'var(--primary)' }}>{s.value}</div>
@@ -313,9 +318,9 @@ export default function InterviewResults() {
         {/* Distribución de scores */}
         <div className="forge-grid-3" style={{ marginBottom: 8 }}>
           {[
-            { label: 'Excelente (≥8)', count: pct80,  color: 'var(--green)'   },
-            { label: 'Aceptable (5-7)', count: pct50, color: 'var(--primary)' },
-            { label: 'A mejorar (<5)',  count: pctLow, color: 'var(--red)'    },
+            { label: t('interview.scoreDistExcellent'), count: pct80,  color: 'var(--green)'   },
+            { label: t('interview.scoreDistAcceptable'), count: pct50, color: 'var(--primary)' },
+            { label: t('interview.scoreDistNeedsWork'),  count: pctLow, color: 'var(--red)'    },
           ].map(d => (
             <div key={d.label} style={{ background: 'var(--surface)', border: '1px solid var(--border)', padding: '10px 14px', textAlign: 'center' }}>
               <div style={{ fontFamily: 'Syne, sans-serif', fontWeight: 800, fontSize: 22, color: d.color }}>{d.count}</div>
@@ -325,19 +330,19 @@ export default function InterviewResults() {
         </div>
 
         {/* ── Score por categoría ── */}
-        <Divider>Score por categoría</Divider>
+        <Divider>{t('interview.scorePerCategory')}</Divider>
         <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', padding: '16px 20px', marginBottom: 8 }}>
           <CategoryBreakdown answers={answers} />
         </div>
 
         {/* ── Insights ── */}
-        <Divider>Puntos fuertes y áreas de mejora</Divider>
+        <Divider>{t('interview.strengthsWeaknesses')}</Divider>
         <InsightPanel answers={answers} />
 
         {/* ── Comparativa histórica ── */}
         {interviews.length >= 2 && (
           <>
-            <Divider>Evolución histórica</Divider>
+            <Divider>{t('interview.historicalEvolution')}</Divider>
             <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', padding: '16px 20px' }}>
               <HistoryComparison interviews={interviews} currentAvg={avg} />
             </div>
@@ -345,7 +350,7 @@ export default function InterviewResults() {
         )}
 
         {/* ── Detalle completo ── */}
-        <Divider>Detalle pregunta a pregunta</Divider>
+        <Divider>{t('interview.questionDetail')}</Divider>
         <AnswerDetail answers={answers} />
 
         {/* ── Acciones ── */}
@@ -356,21 +361,21 @@ export default function InterviewResults() {
             onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--primary)'}
             onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}
           >
-            Nueva entrevista →
+            {t('interview.newInterview')}
           </button>
           <button
             onClick={() => navigate('/dashboard')}
             style={{ flex: 1, padding: '13px 0', background: 'var(--primary)', border: 'none', color: '#000', cursor: 'pointer', fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: 13 }}
           >
-            Dashboard →
+            {t('common.dashboard')}
           </button>
         </div>
 
       </main>
 
       <footer className="forge-footer" style={{ marginTop: 20 }}>
-        <span>DevForge</span>
-        <button onClick={() => navigate('/dashboard')} style={{ background: 'none', border: 'none', color: 'var(--subtle)', cursor: 'pointer', fontFamily: 'Space Mono, monospace', fontSize: 10 }}>← Dashboard</button>
+        <span>{t('history.footer')}</span>
+        <button onClick={() => navigate('/dashboard')} style={{ background: 'none', border: 'none', color: 'var(--subtle)', cursor: 'pointer', fontFamily: 'Space Mono, monospace', fontSize: 10 }}>{t('history.backDashboard')}</button>
       </footer>
     </div>
   )

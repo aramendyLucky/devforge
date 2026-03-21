@@ -5,6 +5,7 @@ import { useProgress } from '../hooks/useProgress.js'
 import { useAI } from '../hooks/useAI.js'
 import { getTopicById } from '../data/topics.js'
 import { getQuestions, getQuestionCount, DIFFICULTY_LABEL } from '../data/questions.js'
+import { useTranslation } from 'react-i18next'
 import Header from '../components/ui/Header.jsx'
 
 const AI_MAX_QUESTIONS = 8
@@ -39,11 +40,12 @@ function SessionProgress({ current, total }) {
 
 // ─── Hint pill ────────────────────────────────────────────
 function HintCard({ hint, level }) {
+  const { t } = useTranslation()
   const colors = ['var(--green)', 'var(--primary)', 'var(--red)']
   return (
     <div style={{ background: 'var(--surface)', border: `1px solid ${colors[level - 1]}`, padding: '12px 16px', marginBottom: 12, animation: 'fadeIn 0.3s ease' }}>
       <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: colors[level - 1], textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 6 }}>
-        💡 Pista nivel {level}
+        {t('session.hint', { level })}
       </div>
       <p style={{ fontFamily: 'Space Mono, monospace', fontSize: 12, color: 'var(--text)', lineHeight: 1.6, margin: 0 }}>
         {hint}
@@ -54,6 +56,7 @@ function HintCard({ hint, level }) {
 
 // ─── Feedback card ────────────────────────────────────────
 function FeedbackCard({ evaluation, userAnswer }) {
+  const { t } = useTranslation()
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10, animation: 'slideUp 0.35s ease' }}>
 
@@ -63,23 +66,23 @@ function FeedbackCard({ evaluation, userAnswer }) {
           {evaluation.score}
         </div>
         <div>
-          <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--subtle)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 4 }}>Score</div>
+          <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--subtle)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 4 }}>{t('session.score')}</div>
           <div style={{ fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: 15, color: 'var(--text)' }}>
-            {evaluation.score >= 8 ? '¡Excelente respuesta!' : evaluation.score >= 5 ? 'Respuesta aceptable, hay margen.' : 'Necesita trabajo. ¡Se puede mejorar!'}
+            {evaluation.score >= 8 ? t('session.scoreExcellent') : evaluation.score >= 5 ? t('session.scoreGood') : t('session.scoreNeedsWork')}
           </div>
         </div>
       </div>
 
       {/* Tu respuesta */}
       <div style={{ background: 'var(--card)', border: '1px solid var(--border)', padding: '12px 16px' }}>
-        <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--subtle)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 8 }}>Tu respuesta</div>
+        <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--subtle)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 8 }}>{t('session.yourAnswer')}</div>
         <p style={{ fontFamily: 'Space Mono, monospace', fontSize: 11, color: 'var(--text)', lineHeight: 1.7, margin: 0, whiteSpace: 'pre-wrap' }}>{userAnswer}</p>
       </div>
 
       {/* Qué estuvo bien */}
       {evaluation.strengths?.length > 0 && (
         <div style={{ background: 'var(--card)', borderLeft: `3px solid var(--green)`, padding: '12px 16px' }}>
-          <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--green)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 8 }}>✓ Qué estuvo bien</div>
+          <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--green)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 8 }}>{t('session.strengths')}</div>
           {evaluation.strengths.map((s, i) => (
             <div key={i} style={{ fontFamily: 'Space Mono, monospace', fontSize: 11, color: 'var(--text)', display: 'flex', gap: 8, marginBottom: 4, lineHeight: 1.5 }}>
               <span style={{ color: 'var(--green)', flexShrink: 0 }}>→</span><span>{s}</span>
@@ -91,7 +94,7 @@ function FeedbackCard({ evaluation, userAnswer }) {
       {/* Qué mejorar */}
       {evaluation.improvements?.length > 0 && (
         <div style={{ background: 'var(--card)', borderLeft: `3px solid var(--primary)`, padding: '12px 16px' }}>
-          <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 8 }}>⚠ Qué mejorar</div>
+          <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 8 }}>{t('session.improvements')}</div>
           {evaluation.improvements.map((s, i) => (
             <div key={i} style={{ fontFamily: 'Space Mono, monospace', fontSize: 11, color: 'var(--text)', display: 'flex', gap: 8, marginBottom: 4, lineHeight: 1.5 }}>
               <span style={{ color: 'var(--primary)', flexShrink: 0 }}>→</span><span>{s}</span>
@@ -103,7 +106,7 @@ function FeedbackCard({ evaluation, userAnswer }) {
       {/* Concepto clave faltante */}
       {evaluation.keyMissing && (
         <div style={{ background: 'var(--card)', borderLeft: `3px solid var(--red)`, padding: '12px 16px' }}>
-          <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--red)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 6 }}>💡 Concepto clave que faltó</div>
+          <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--red)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 6 }}>{t('session.missingConcept')}</div>
           <p style={{ fontFamily: 'Space Mono, monospace', fontSize: 11, color: 'var(--text)', margin: 0, lineHeight: 1.6 }}>{evaluation.keyMissing}</p>
         </div>
       )}
@@ -111,7 +114,7 @@ function FeedbackCard({ evaluation, userAnswer }) {
       {/* Follow-up */}
       {evaluation.followUp && (
         <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', padding: '12px 16px' }}>
-          <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--subtle)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 6 }}>🎯 Pregunta de profundización</div>
+          <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--subtle)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 6 }}>{t('session.followUp')}</div>
           <p style={{ fontFamily: 'Space Mono, monospace', fontSize: 11, color: 'var(--text)', margin: 0, lineHeight: 1.6, fontStyle: 'italic' }}>"{evaluation.followUp}"</p>
         </div>
       )}
@@ -121,6 +124,7 @@ function FeedbackCard({ evaluation, userAnswer }) {
 
 // ─── Pantalla final ───────────────────────────────────────
 function DoneScreen({ answers, topic, onRestart, onDashboard, onHistory }) {
+  const { t } = useTranslation()
   const avg = answers.length
     ? Math.round(answers.reduce((a, b) => a + (b.score || 0), 0) / answers.length) : 0
   const best  = answers.reduce((a, b) => (b.score || 0) > (a.score || 0) ? b : a, answers[0])
@@ -131,12 +135,12 @@ function DoneScreen({ answers, topic, onRestart, onDashboard, onHistory }) {
 
       {/* Header resultado */}
       <div style={{ textAlign: 'center', marginBottom: 32 }}>
-        <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 8 }}>Sesión completada</div>
+        <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 8 }}>{t('session.complete')}</div>
         <div style={{ fontFamily: 'Syne, sans-serif', fontWeight: 800, fontSize: 36, color: 'var(--text)', marginBottom: 12 }}>
-          {avg >= 8 ? '¡Excelente trabajo!' : avg >= 5 ? 'Buen esfuerzo.' : 'A seguir practicando.'}
+          {avg >= 8 ? t('session.msgExcellent') : avg >= 5 ? t('session.msgGood') : t('session.msgKeepGoing')}
         </div>
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: 'var(--surface)', border: `2px solid ${scoreColor(avg)}`, padding: '10px 24px' }}>
-          <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 12, color: 'var(--subtle)' }}>Score promedio</span>
+          <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 12, color: 'var(--subtle)' }}>{t('session.avgScore')}</span>
           <span style={{ fontFamily: 'Syne, sans-serif', fontWeight: 800, fontSize: 28, color: scoreColor(avg) }}>{avg}/10</span>
         </div>
       </div>
@@ -144,13 +148,13 @@ function DoneScreen({ answers, topic, onRestart, onDashboard, onHistory }) {
       {/* Stats rápidas */}
       <div className="forge-grid-3" style={{ marginBottom: 28 }}>
         {[
-          { label: 'Preguntas', value: answers.length },
-          { label: 'Mejor score', value: best?.score || '—' },
-          { label: 'Tema', value: topic?.icon || '—' },
+          { labelKey: 'session.questions', value: answers.length },
+          { labelKey: 'session.bestScore', value: best?.score || '—' },
+          { labelKey: 'session.topic', value: topic?.icon || '—' },
         ].map(s => (
-          <div key={s.label} style={{ background: 'var(--surface)', border: '1px solid var(--border)', padding: '12px 16px', textAlign: 'center' }}>
+          <div key={s.labelKey} style={{ background: 'var(--surface)', border: '1px solid var(--border)', padding: '12px 16px', textAlign: 'center' }}>
             <div style={{ fontFamily: 'Syne, sans-serif', fontWeight: 800, fontSize: 22, color: 'var(--primary)', marginBottom: 4 }}>{s.value}</div>
-            <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{s.label}</div>
+            <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{t(s.labelKey)}</div>
           </div>
         ))}
       </div>
@@ -159,7 +163,7 @@ function DoneScreen({ answers, topic, onRestart, onDashboard, onHistory }) {
       <div style={{ marginBottom: 28 }}>
         <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 10 }}>
           <span style={{ flex: 1, height: 1, background: 'var(--border)', display: 'inline-block' }} />
-          Resultado por pregunta
+          {t('session.resultPerQuestion')}
           <span style={{ flex: 1, height: 1, background: 'var(--border)', display: 'inline-block' }} />
         </div>
 
@@ -180,7 +184,7 @@ function DoneScreen({ answers, topic, onRestart, onDashboard, onHistory }) {
       {/* Área de mejora */}
       {worst && worst.feedback?.keyMissing && (
         <div style={{ background: 'var(--surface)', border: `1px solid var(--primary)`, padding: '14px 18px', marginBottom: 28 }}>
-          <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 6 }}>📌 Principal área de mejora</div>
+          <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 6 }}>📌 {t('session.mainImprovement')}</div>
           <p style={{ fontFamily: 'Space Mono, monospace', fontSize: 12, color: 'var(--text)', margin: 0, lineHeight: 1.6 }}>{worst.feedback.keyMissing}</p>
         </div>
       )}
@@ -190,13 +194,13 @@ function DoneScreen({ answers, topic, onRestart, onDashboard, onHistory }) {
         <button onClick={onRestart} style={{ flex: 1, padding: '12px 0', background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text)', cursor: 'pointer', fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: 13, transition: 'border-color 0.15s' }}
           onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--primary)'}
           onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}
-        >Otra ronda →</button>
+        >{t('session.anotherRound')}</button>
         <button onClick={onHistory} style={{ flex: 1, padding: '12px 0', background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text)', cursor: 'pointer', fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: 13, transition: 'border-color 0.15s' }}
           onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--primary)'}
           onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}
-        >Ver historial</button>
+        >{t('session.viewHistory')}</button>
         <button onClick={onDashboard} style={{ flex: 1, padding: '12px 0', background: 'var(--primary)', border: 'none', color: '#000', cursor: 'pointer', fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: 13 }}>
-          Dashboard →
+          {t('common.dashboard')}
         </button>
       </div>
     </div>
@@ -207,6 +211,7 @@ function DoneScreen({ answers, topic, onRestart, onDashboard, onHistory }) {
 export default function Session() {
   const navigate  = useNavigate()
   const location  = useLocation()
+  const { t }     = useTranslation()
   const { startSession, submitAnswer, endSession } = useSession()
   const { updateProgress } = useProgress()
   const { evaluateAnswer, getHint, generateQuestion, loading } = useAI()
@@ -263,8 +268,8 @@ export default function Session() {
     return (
       <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <div style={{ textAlign: 'center' }}>
-          <p style={{ fontFamily: 'Space Mono, monospace', fontSize: 12, color: 'var(--subtle)', marginBottom: 20 }}>No hay preguntas disponibles.</p>
-          <button onClick={() => navigate('/dashboard')} style={{ padding: '10px 20px', background: 'var(--primary)', border: 'none', color: '#000', cursor: 'pointer', fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: 13 }}>← Volver</button>
+          <p style={{ fontFamily: 'Space Mono, monospace', fontSize: 12, color: 'var(--subtle)', marginBottom: 20 }}>{t('session.noQuestions')}</p>
+          <button onClick={() => navigate('/dashboard')} style={{ padding: '10px 20px', background: 'var(--primary)', border: 'none', color: '#000', cursor: 'pointer', fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: 13 }}>{t('common.back')}</button>
         </div>
       </div>
     )

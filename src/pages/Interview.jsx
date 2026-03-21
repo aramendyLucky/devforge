@@ -4,6 +4,7 @@ import { useStore, ACTIONS } from '../store/index.jsx'
 import { useAI } from '../hooks/useAI.js'
 import { getTopicById, TOPICS } from '../data/topics.js'
 import { getQuestions, DIFFICULTY_LABEL } from '../data/questions.js'
+import { useTranslation } from 'react-i18next'
 import Header from '../components/ui/Header.jsx'
 
 const DIFF_COLOR = { basic: 'var(--green)', mid: 'var(--primary)', senior: 'var(--red)' }
@@ -66,25 +67,26 @@ function InterviewTimer({ secondsLeft, totalSeconds }) {
 
 // ─── Pantalla de countdown ────────────────────────────────
 function CountdownScreen({ onStart, duration, topicCount, questionCount }) {
+  const { t } = useTranslation()
   const [count, setCount] = useState(3)
 
   useEffect(() => {
     if (count === 0) { onStart(); return }
-    const t = setTimeout(() => setCount(c => c - 1), 1000)
-    return () => clearTimeout(t)
+    const timer = setTimeout(() => setCount(c => c - 1), 1000)
+    return () => clearTimeout(timer)
   }, [count])
 
   return (
     <div style={{ textAlign: 'center', padding: '60px 24px', animation: 'fadeIn 0.3s ease' }}>
       <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)', textTransform: 'uppercase', letterSpacing: '0.15em', marginBottom: 24 }}>
-        La entrevista empieza en
+        {t('interview.countdown')}
       </div>
       <div style={{ fontFamily: 'Syne, sans-serif', fontWeight: 800, fontSize: 96, color: 'var(--primary)', lineHeight: 1, marginBottom: 24, animation: 'pulse 1s infinite' }}>
-        {count === 0 ? '¡Ya!' : count}
+        {count === 0 ? t('interview.now') : count}
       </div>
       <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 12, color: 'var(--subtle)', lineHeight: 1.8 }}>
-        {duration} min · {topicCount} temas · ~{questionCount} preguntas<br/>
-        Sin hints · Sin pausas · Feedback al final
+        {duration} min · {topicCount} {t('dashboard.topics', { count: topicCount }).split(' ')[1]} · ~{questionCount} {t('history.statQuestions').toLowerCase()}<br/>
+        {t('interview.rules')}
       </div>
     </div>
   )
@@ -92,6 +94,7 @@ function CountdownScreen({ onStart, duration, topicCount, questionCount }) {
 
 // ─── Interview principal ──────────────────────────────────
 export default function Interview() {
+  const { t }     = useTranslation()
   const navigate  = useNavigate()
   const location  = useLocation()
   const { dispatch } = useStore()
@@ -245,10 +248,10 @@ export default function Interview() {
       <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <div style={{ textAlign: 'center' }}>
           <p style={{ fontFamily: 'Space Mono, monospace', fontSize: 12, color: 'var(--subtle)', marginBottom: 20 }}>
-            Sin configuración de entrevista.
+            {t('interview.noConfig')}
           </p>
           <button onClick={() => navigate('/interview-setup')} style={{ padding: '10px 20px', background: 'var(--primary)', border: 'none', color: '#000', cursor: 'pointer', fontFamily: 'Syne, sans-serif', fontWeight: 700 }}>
-            Configurar →
+            {t('dashboard.configure')}
           </button>
         </div>
       </div>
@@ -268,7 +271,7 @@ export default function Interview() {
               DEV<span style={{ color: 'var(--text)' }}>FORGE</span>
             </span>
             <span className="forge-hide-sm" style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)' }}>
-              / Entrevista simulada
+              {t('interview.simulatedInterview')}
             </span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -326,7 +329,7 @@ export default function Interview() {
             {/* Sin hints — aviso */}
             <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', padding: '8px 14px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)' }}>
-                🚫 Modo entrevista — sin hints disponibles
+                {t('interview.noHintsMode')}
               </span>
             </div>
 
@@ -348,7 +351,7 @@ export default function Interview() {
                 onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--red)'; e.currentTarget.style.color = 'var(--red)' }}
                 onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--subtle)' }}
               >
-                Omitir →
+                {t('interview.skip')}
               </button>
 
               <button
@@ -357,17 +360,17 @@ export default function Interview() {
                 style={{ flex: 1, padding: '10px 0', background: answer.trim().length < 5 ? 'var(--muted)' : 'var(--primary)', border: 'none', color: '#000', cursor: answer.trim().length < 5 ? 'default' : 'pointer', fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
               >
                 {phase === 'evaluating' ? (
-                  <><span style={{ width: 14, height: 14, border: '2px solid #000', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.6s linear infinite', display: 'inline-block' }} />Evaluando...</>
-                ) : 'Responder →'}
+                  <><span style={{ width: 14, height: 14, border: '2px solid #000', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.6s linear infinite', display: 'inline-block' }} />{t('interview.evaluating')}</>
+                ) : t('interview.respond')}
               </button>
             </div>
 
             {/* Stats en vivo */}
             <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginTop: 20, padding: '10px 14px', background: 'var(--surface)', border: '1px solid var(--border)' }}>
               {[
-                { label: 'Respondidas', value: answered },
-                { label: 'Omitidas',    value: skipped },
-                { label: 'Restantes',   value: questions.length - qIndex - 1 },
+                { label: t('interview.answered'), value: answered },
+                { label: t('interview.omitted'),  value: skipped },
+                { label: t('interview.remaining'), value: questions.length - qIndex - 1 },
               ].map(s => (
                 <div key={s.label} style={{ textAlign: 'center' }}>
                   <div style={{ fontFamily: 'Syne, sans-serif', fontWeight: 800, fontSize: 18, color: 'var(--primary)' }}>{s.value}</div>

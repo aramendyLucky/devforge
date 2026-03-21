@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { useProgress } from '../hooks/useProgress.js'
 import { getTopicById, TOPICS } from '../data/topics.js'
 import { getQuestions, DIFFICULTY_LABEL } from '../data/questions.js'
@@ -8,7 +9,6 @@ import Header from '../components/ui/Header.jsx'
 import ResourcePanel from '../components/ui/ResourcePanel.jsx'
 
 const DIFF_COLOR  = { basic: 'var(--green)', mid: 'var(--primary)', senior: 'var(--red)' }
-const TIER_LABEL  = { 1: 'Crítico', 2: 'Importante', 3: 'Diferenciador' }
 const CAT_ICONS   = { backend:'⚙️', frontend:'🖥️', cloud:'☁️', database:'🗄️', devops:'🔧', ai:'🤖', methodology:'📋' }
 
 function scoreColor(s) {
@@ -71,6 +71,7 @@ function QuestionRow({ q, index, onClick }) {
 // ─── Temas relacionados ───────────────────────────────────
 function RelatedTopics({ topicId }) {
   const navigate = useNavigate()
+  const { t } = useTranslation()
   const current  = getTopicById(topicId)
   if (!current) return null
 
@@ -82,7 +83,7 @@ function RelatedTopics({ topicId }) {
 
   return (
     <div>
-      <Divider>Temas relacionados</Divider>
+      <Divider>{t('topic.relatedTopics')}</Divider>
       <div className="forge-grid-2">
         {related.map(t => (
           <div
@@ -108,6 +109,7 @@ function RelatedTopics({ topicId }) {
 export default function Topic() {
   const { id }   = useParams()
   const navigate = useNavigate()
+  const { t } = useTranslation()
   const { getTopicProgress } = useProgress()
   const [activeFilter, setActiveFilter] = useState('all')
   const [resourcePanelOpen, setResourcePanelOpen] = useState(false)
@@ -118,8 +120,8 @@ export default function Topic() {
     return (
       <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <div style={{ textAlign: 'center' }}>
-          <p style={{ fontFamily: 'Space Mono, monospace', fontSize: 12, color: 'var(--subtle)', marginBottom: 16 }}>Tema no encontrado.</p>
-          <button onClick={() => navigate('/dashboard')} style={{ padding: '10px 20px', background: 'var(--primary)', border: 'none', color: '#000', cursor: 'pointer', fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: 13 }}>← Dashboard</button>
+          <p style={{ fontFamily: 'Space Mono, monospace', fontSize: 12, color: 'var(--subtle)', marginBottom: 16 }}>{t('topic.notFound')}</p>
+          <button onClick={() => navigate('/dashboard')} style={{ padding: '10px 20px', background: 'var(--primary)', border: 'none', color: '#000', cursor: 'pointer', fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: 13 }}>{t('topic.backDashboard')}</button>
         </div>
       </div>
     )
@@ -160,13 +162,13 @@ export default function Topic() {
               style={{ padding: '7px 13px', background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--subtle)', cursor: 'pointer', fontFamily: 'Space Mono, monospace', fontSize: 11, display: 'flex', alignItems: 'center', gap: 6, transition: 'all 0.15s' }}
               onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.color = 'var(--primary)' }}
               onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--subtle)' }}
-              title="Ver recursos de aprendizaje"
+              title={t('common.resources')}
             >
               <span style={{ fontSize: 14 }}>📚</span>
-              <span>Recursos</span>
+              <span>{t('topic.resources')}</span>
             </button>
             <button onClick={() => startAll(null)} style={{ padding: '7px 16px', background: 'var(--primary)', border: 'none', color: '#000', cursor: 'pointer', fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: 12 }}>
-              Practicar todo →
+              {t('topic.practiceAll')}
             </button>
           </div>
         }
@@ -181,7 +183,7 @@ export default function Topic() {
             <div style={{ flex: 1 }}>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
                 <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, padding: '2px 7px', border: '1px solid var(--primary)', color: 'var(--primary)' }}>
-                  TIER {topic.tier} — {TIER_LABEL[topic.tier].toUpperCase()}
+                  TIER {topic.tier} — {topic.tier === 1 ? t('topic.tierCritical') : topic.tier === 2 ? t('topic.tierImportant') : t('topic.tierDifferentiator')}
                 </span>
                 <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, padding: '2px 7px', border: '1px solid var(--border)', color: 'var(--subtle)' }}>
                   {CAT_ICONS[topic.category]} {topic.category.toUpperCase()}
@@ -209,10 +211,10 @@ export default function Topic() {
           {/* Barra de progreso */}
           <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', padding: '14px 18px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-              <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Tu progreso</span>
+              <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{t('topic.progress')}</span>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)' }}>
-                  {progress.completed || 0}/{allQuestions.length} preguntas
+                  {t('topic.questionsCount', { completed: progress.completed || 0, total: allQuestions.length })}
                 </span>
                 <span style={{ fontFamily: 'Syne, sans-serif', fontWeight: 800, fontSize: 15, color: pct >= 80 ? 'var(--green)' : 'var(--primary)' }}>{pct}%</span>
               </div>
@@ -222,7 +224,7 @@ export default function Topic() {
             </div>
             {progress.lastScore && (
               <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: scoreColor(progress.lastScore), marginTop: 6 }}>
-                Último score: {progress.lastScore}/10
+                {t('topic.lastScore', { score: progress.lastScore })}
               </div>
             )}
           </div>
@@ -231,9 +233,9 @@ export default function Topic() {
         {/* ── Acciones rápidas por dificultad ── */}
         <div className="forge-grid-3" style={{ marginBottom: 8 }}>
           {[
-            { diff: 'basic',  label: 'Básico',      count: basic.length,  icon: '🟢' },
-            { diff: 'mid',    label: 'Intermedio',   count: mid.length,    icon: '🟡' },
-            { diff: 'senior', label: 'Senior',       count: senior.length, icon: '🔴' },
+            { diff: 'basic',  labelKey: 'topic.basic',  count: basic.length,  icon: '🟢' },
+            { diff: 'mid',    labelKey: 'topic.mid',    count: mid.length,    icon: '🟡' },
+            { diff: 'senior', labelKey: 'topic.senior', count: senior.length, icon: '🔴' },
           ].map(d => (
             <button
               key={d.diff}
@@ -244,8 +246,8 @@ export default function Topic() {
               onMouseLeave={e => { if (d.count) e.currentTarget.style.borderColor = activeFilter === d.diff ? DIFF_COLOR[d.diff] : 'var(--border)' }}
             >
               <div style={{ fontSize: 18, marginBottom: 4 }}>{d.icon}</div>
-              <div>{d.label}</div>
-              <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--subtle)', marginTop: 2 }}>{d.count} preguntas</div>
+              <div>{t(d.labelKey)}</div>
+              <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--subtle)', marginTop: 2 }}>{t('topic.questionsNum', { count: d.count })}</div>
             </button>
           ))}
         </div>
@@ -253,7 +255,7 @@ export default function Topic() {
         {/* ── Modo IA ── */}
         <div style={{ marginBottom: 32 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-            <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--primary)', border: '1px solid var(--primary)', padding: '2px 8px', whiteSpace: 'nowrap' }}>✨ MODO IA</span>
+            <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--primary)', border: '1px solid var(--primary)', padding: '2px 8px', whiteSpace: 'nowrap' }}>{t('topic.aiMode')}</span>
             <span style={{ flex: 1, height: 1, background: 'var(--border)', display: 'inline-block' }} />
             {['basic', 'mid', 'senior'].map(diff => (
               <button
@@ -263,19 +265,19 @@ export default function Topic() {
                 onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.color = 'var(--primary)' }}
                 onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--subtle)' }}
               >
-                {diff === 'basic' ? 'Básico' : diff === 'mid' ? 'Intermedio' : 'Senior'}
+                {diff === 'basic' ? t('topic.basic') : diff === 'mid' ? t('topic.mid') : t('topic.senior')}
               </button>
             ))}
           </div>
           <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--muted)', lineHeight: 1.6 }}>
-            Preguntas únicas generadas en tiempo real, adaptadas a tus debilidades del historial.
+            {t('topic.aiModeDesc2')}
           </div>
         </div>
 
         {/* ── Entrevistador difícil ── */}
         <div style={{ marginBottom: 32 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-            <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--red)', border: '1px solid var(--red)', padding: '2px 8px', whiteSpace: 'nowrap' }}>🔥 MODO DIFÍCIL</span>
+            <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--red)', border: '1px solid var(--red)', padding: '2px 8px', whiteSpace: 'nowrap' }}>{t('topic.hardMode')}</span>
             <span style={{ flex: 1, height: 1, background: 'var(--border)', display: 'inline-block' }} />
             {['mid', 'senior'].map(diff => (
               <button
@@ -285,12 +287,12 @@ export default function Topic() {
                 onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--red)'; e.currentTarget.style.color = 'var(--red)' }}
                 onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--subtle)' }}
               >
-                {diff === 'mid' ? 'Intermedio' : 'Senior'}
+                {diff === 'mid' ? t('topic.mid') : t('topic.senior')}
               </button>
             ))}
           </div>
           <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--muted)', lineHeight: 1.6 }}>
-            Preguntas IA + el entrevistador hace follow-ups si tu respuesta no convence (máx. 3 por pregunta).
+            {t('topic.hardModeDesc2')}
           </div>
         </div>
 
@@ -302,7 +304,9 @@ export default function Topic() {
               onClick={() => setActiveFilter(f)}
               style={{ padding: '5px 12px', background: activeFilter === f ? 'var(--primary)' : 'var(--surface)', border: `1px solid ${activeFilter === f ? 'var(--primary)' : 'var(--border)'}`, color: activeFilter === f ? '#000' : 'var(--subtle)', cursor: 'pointer', fontFamily: 'Space Mono, monospace', fontSize: 10, fontWeight: activeFilter === f ? 700 : 400, transition: 'all 0.15s', textTransform: 'uppercase' }}
             >
-              {f === 'all' ? `Todas (${allQuestions.length})` : `${DIFFICULTY_LABEL[f]} (${allQuestions.filter(q => q.difficulty === f).length})`}
+              {f === 'all'
+                ? t('topic.allFilter', { count: allQuestions.length })
+                : `${DIFFICULTY_LABEL[f]} (${allQuestions.filter(q => q.difficulty === f).length})`}
             </button>
           ))}
         </div>
@@ -314,7 +318,7 @@ export default function Topic() {
           ))}
           {filtered.length === 0 && (
             <div style={{ padding: '24px', textAlign: 'center', fontFamily: 'Space Mono, monospace', fontSize: 11, color: 'var(--subtle)', background: 'var(--surface)', border: '1px solid var(--border)' }}>
-              No hay preguntas para este filtro.
+              {t('topic.noQuestionsFilter')}
             </div>
           )}
         </div>
@@ -326,7 +330,7 @@ export default function Topic() {
 
       <footer className="forge-footer">
         <span>DevForge</span>
-        <button onClick={() => navigate('/dashboard')} style={{ background: 'none', border: 'none', color: 'var(--subtle)', cursor: 'pointer', fontFamily: 'Space Mono, monospace', fontSize: 10 }}>← Dashboard</button>
+        <button onClick={() => navigate('/dashboard')} style={{ background: 'none', border: 'none', color: 'var(--subtle)', cursor: 'pointer', fontFamily: 'Space Mono, monospace', fontSize: 10 }}>{t('topic.backDashboard')}</button>
       </footer>
 
       <style>{`@keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }`}</style>

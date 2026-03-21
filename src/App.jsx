@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import { useEffect } from 'react'
 import { useStore } from './store/index.jsx'
 import { applyTheme } from './components/ui/ThemeSwitcher.jsx'
+import i18n from './i18n/index.js'
 import PrivateRoute       from './components/ui/PrivateRoute.jsx'
 import Landing            from './pages/Landing.jsx'
 import Login              from './pages/Login.jsx'
@@ -44,7 +45,26 @@ function ThemeInitializer() {
   useEffect(() => {
     applyTheme(state.config?.theme || 'forge')
   }, [state.config?.theme])
-  return null // no renderiza nada visual
+  return null
+}
+
+/**
+ * LanguageInitializer — sincroniza i18n con el idioma guardado en el store.
+ *
+ * Se ejecuta cada vez que state.config.language cambia, incluyendo cuando
+ * LOAD_STATE carga los datos del usuario desde Supabase al hacer login.
+ * Sin esto, el idioma del store y el de i18n quedan desincronizados.
+ */
+function LanguageInitializer() {
+  const { state } = useStore()
+  useEffect(() => {
+    const lang = state.config?.language || 'es'
+    if (i18n.language !== lang) {
+      i18n.changeLanguage(lang)
+      localStorage.setItem('devforge_lang', lang)
+    }
+  }, [state.config?.language])
+  return null
 }
 
 /**
@@ -77,6 +97,7 @@ export default function App() {
     <>
       <NoiseOverlay />
       <ThemeInitializer />
+      <LanguageInitializer />
       <Routes>
 
         {/* ── Rutas públicas ─────────────────────────────────────────── */}

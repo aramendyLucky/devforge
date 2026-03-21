@@ -5,6 +5,8 @@ import { useAuth } from '../../context/AuthContext'
 import { useTheme, useFont } from './ThemeSwitcher.jsx'
 import ResourcePanel from './ResourcePanel.jsx'
 import { TOPICS } from '../../data/topics.js'
+import { useTranslation } from 'react-i18next'
+import i18n from '../../i18n/index.js'
 
 // ─── Opciones de fuente ────────────────────────────────────
 const FONT_OPTIONS = [
@@ -77,14 +79,12 @@ function SettingsPanel({ onClose }) {
   const { state, dispatch } = useStore()
   const { activeTheme, setTheme } = useTheme()
   const { activeFont, setFont } = useFont()
-  const { signOut }             = useAuth()   // función de cierre de sesión de Supabase
+  const { signOut }             = useAuth()
   const navigate                = useNavigate()
+  const { t }                   = useTranslation()
   const [nombre, setNombre] = useState(state.user?.name || '')
   const [saved, setSaved]   = useState(false)
-  const [loggingOut, setLoggingOut] = useState(false) // evita doble click en logout
-
-  // Idioma activo desde el store (defecto 'es' si aún no está guardado)
-  const activeLanguage = state.config?.language || 'es'
+  const [loggingOut, setLoggingOut] = useState(false)
 
   function guardar() {
     if (!nombre.trim()) return
@@ -93,20 +93,6 @@ function SettingsPanel({ onClose }) {
     setTimeout(() => setSaved(false), 1500)
   }
 
-  /**
-   * cambiarIdioma — guarda la preferencia de idioma en el store.
-   *
-   * Por ahora solo persiste la elección en Supabase.
-   * Las traducciones reales de la UI se implementan en una fase futura,
-   * cuando tengamos un sistema de i18n (ej: react-i18next).
-   * Guardar la preferencia ahora significa que cuando llegue ese sistema,
-   * cada usuario ya tendrá su idioma configurado automáticamente.
-   *
-   * @param {'es'|'en'} lang — código del idioma seleccionado
-   */
-  function cambiarIdioma(lang) {
-    dispatch({ type: ACTIONS.SET_CONFIG_FIELD, key: 'language', value: lang })
-  }
 
   /**
    * handleLogout — cierra la sesión del usuario.
@@ -135,7 +121,7 @@ function SettingsPanel({ onClose }) {
         <div style={{ padding: '18px 20px', borderBottom: '1px solid var(--border)', background: 'var(--surface)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 1 }}>
           <div>
             <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--subtle)', textTransform: 'uppercase', letterSpacing: '0.15em', marginBottom: 3 }}>DevForge</div>
-            <div style={{ fontFamily: 'Syne, sans-serif', fontWeight: 800, fontSize: 17, color: 'var(--text)' }}>Ajustes</div>
+            <div style={{ fontFamily: 'Syne, sans-serif', fontWeight: 800, fontSize: 17, color: 'var(--text)' }}>{t('common.settings')}</div>
           </div>
           <button onClick={onClose} style={{ width: 32, height: 32, background: 'var(--card)', border: '1px solid var(--border)', color: 'var(--text)', cursor: 'pointer', fontWeight: 700, fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
         </div>
@@ -143,24 +129,24 @@ function SettingsPanel({ onClose }) {
         {/* cuerpo */}
         <div style={{ padding: 16, flex: 1 }}>
 
-          <Accordion title="Usuario" icon="👤" defaultOpen={true}>
-            <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 }}>Nombre</div>
+          <Accordion title={t('header.user')} icon="👤" defaultOpen={true}>
+            <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 }}>{t('header.name')}</div>
             <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-              <input value={nombre} onChange={e => setNombre(e.target.value)} onKeyDown={e => e.key === 'Enter' && guardar()} placeholder="Tu nombre..." style={{ flex: 1, padding: '8px 10px', background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text)', fontFamily: 'Space Mono, monospace', fontSize: 12, outline: 'none' }} />
+              <input value={nombre} onChange={e => setNombre(e.target.value)} onKeyDown={e => e.key === 'Enter' && guardar()} placeholder={t('header.namePlaceholder')} style={{ flex: 1, padding: '8px 10px', background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text)', fontFamily: 'Space Mono, monospace', fontSize: 12, outline: 'none' }} />
               <button onClick={guardar} style={{ padding: '8px 12px', background: saved ? 'var(--green)' : 'var(--primary)', color: '#000', border: 'none', cursor: 'pointer', fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap' }}>
-                {saved ? '✓ Guardado' : 'Guardar'}
+                {saved ? `✓ ${t('common.saved')}` : t('common.save')}
               </button>
             </div>
             {state.user?.targetDate && (
               <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 11, color: 'var(--subtle)', padding: '8px 10px', background: 'var(--surface)', border: '1px solid var(--border)' }}>
-                📅 Entrevista: <strong style={{ color: 'var(--primary)' }}>{new Date(state.user.targetDate).toLocaleDateString('es-AR')}</strong>
+                📅 {t('header.interviewDate')} <strong style={{ color: 'var(--primary)' }}>{new Date(state.user.targetDate).toLocaleDateString(state.config?.language === 'en' ? 'en-US' : 'es-AR')}</strong>
               </div>
             )}
           </Accordion>
 
-          <Accordion title="Apariencia" icon="🎨" defaultOpen={true}>
+          <Accordion title={t('header.appearance')} icon="🎨" defaultOpen={true}>
             <p style={{ fontFamily: 'Space Mono, monospace', fontSize: 11, color: 'var(--subtle)', lineHeight: 1.6, marginBottom: 14 }}>
-              Tres temas de la misma familia cromática. Elegí el que mejor se adapte a tu entorno de estudio.
+              {t('header.themeDesc')}
             </p>
             {THEME_OPTIONS.map(t => {
               const active = activeTheme === t.id
@@ -183,7 +169,7 @@ function SettingsPanel({ onClose }) {
 
             {/* ─── Font picker ─────────────────────────── */}
             <div style={{ borderTop: '1px solid var(--border)', marginTop: 6, paddingTop: 14, marginBottom: 4 }}>
-              <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--subtle)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 10 }}>Estilo tipográfico</div>
+              <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--subtle)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 10 }}>{t('header.typography')}</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {FONT_OPTIONS.map(f => {
                   const active = activeFont === f.id
@@ -212,70 +198,26 @@ function SettingsPanel({ onClose }) {
             </div>
           </Accordion>
 
-          <Accordion title="Sesiones" icon="⚡">
-            <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 11, color: 'var(--subtle)', padding: '10px 0', textAlign: 'center', lineHeight: 1.7 }}>Próximamente<br/>Duración · Dificultad · Modo examen</div>
+          <Accordion title={t('header.sessions')} icon="⚡">
+            <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 11, color: 'var(--subtle)', padding: '10px 0', textAlign: 'center', lineHeight: 1.7 }}>{t('common.comingSoon')}<br/>{t('header.sessionDuration')}</div>
           </Accordion>
 
           <Accordion title="Notificaciones" icon="🔔">
-            <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 11, color: 'var(--subtle)', padding: '10px 0', textAlign: 'center', lineHeight: 1.7 }}>Próximamente<br/>Recordatorios de práctica diaria</div>
+            <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 11, color: 'var(--subtle)', padding: '10px 0', textAlign: 'center', lineHeight: 1.7 }}>{t('common.comingSoon')}<br/>{t('header.reminders')}</div>
           </Accordion>
 
-          <Accordion title="Datos y privacidad" icon="💾">
-            <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 11, color: 'var(--subtle)', padding: '10px 0', textAlign: 'center', lineHeight: 1.7 }}>Próximamente<br/>Exportar progreso · Reiniciar sesión</div>
+          <Accordion title={t('header.privacy')} icon="💾">
+            <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 11, color: 'var(--subtle)', padding: '10px 0', textAlign: 'center', lineHeight: 1.7 }}>{t('common.comingSoon')}<br/>{t('header.export')}</div>
           </Accordion>
 
-          <Accordion title="Acerca de DevForge" icon="ℹ️">
+          <Accordion title={t('header.about')} icon="ℹ️">
             <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 11, color: 'var(--subtle)', lineHeight: 1.8 }}>
-              <div>Versión: <strong style={{ color: 'var(--primary)' }}>0.1.0 beta</strong></div>
-              <div>Motor: <strong style={{ color: 'var(--primary)' }}>Claude Sonnet</strong></div>
-              <div>Stack: <strong style={{ color: 'var(--primary)' }}>React + Vite + Tailwind</strong></div>
+              <div>{t('header.version')}</div>
+              <div>{t('header.engine')}</div>
+              <div>{t('header.stack')}</div>
             </div>
           </Accordion>
 
-          {/* ── Idioma ───────────────────────────────────────────────────────────
-              Guarda la preferencia ya. Las traducciones de UI llegan en fase futura.
-              Usamos dos botones tipo "tab" que reflejan el idioma activo del store.
-          ─────────────────────────────────────────────────────────────────────── */}
-          <Accordion title="Idioma / Language" icon="🌐">
-            <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 10 }}>
-              Idioma de la interfaz
-            </div>
-
-            {/* Selector de idioma: dos botones tipo toggle */}
-            <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-              {[
-                { id: 'es', label: '🇦🇷  Español' },
-                { id: 'en', label: '🇺🇸  English' },
-              ].map(({ id, label }) => (
-                <button
-                  key={id}
-                  onClick={() => cambiarIdioma(id)}
-                  style={{
-                    flex: 1,
-                    padding: '9px 0',
-                    // Si está activo: fondo primario con texto negro (contraste)
-                    // Si no: fondo de superficie con borde sutil
-                    background:   activeLanguage === id ? 'var(--primary)' : 'var(--surface)',
-                    border:       `1px solid ${activeLanguage === id ? 'var(--primary)' : 'var(--border)'}`,
-                    color:        activeLanguage === id ? '#000' : 'var(--subtle)',
-                    cursor:       'pointer',
-                    fontFamily:   'Syne, sans-serif',
-                    fontWeight:   700,
-                    fontSize:     12,
-                    transition:   'all 0.15s',
-                  }}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-
-            {/* Aviso de que las traducciones vienen en el futuro */}
-            <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)', lineHeight: 1.6, padding: '8px 10px', background: 'var(--bg)', border: '1px solid var(--border)' }}>
-              Tu preferencia queda guardada.
-              Las traducciones de la UI llegan en una próxima versión.
-            </div>
-          </Accordion>
 
         </div>
 
@@ -315,12 +257,12 @@ function SettingsPanel({ onClose }) {
               e.currentTarget.style.color = 'var(--red)'
             }}
           >
-            {loggingOut ? 'Cerrando sesión...' : '→ Cerrar sesión'}
+            {loggingOut ? t('common.loggingOut') : t('common.logout')}
           </button>
         </div>
 
         <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border)', background: 'var(--surface)', fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)', textAlign: 'center' }}>
-          DevForge beta · Powered by Claude
+          {t('header.footer')}
         </div>
       </div>
     </>
@@ -346,10 +288,20 @@ function SettingsPanel({ onClose }) {
  *   - Botón "⚙ Ajustes" — abre SettingsPanel (temas, fuente, logout, etc.)
  */
 export default function Header({ backTo, backLabel, rightContent }) {
-  const navigate   = useNavigate()
-  const location   = useLocation()  // para detectar la página actual y extraer el topic
-  const { state }  = useStore()
+  const navigate         = useNavigate()
+  const location         = useLocation()
+  const { state, dispatch } = useStore()
+  const { t }            = useTranslation()
   const [settingsOpen,  setSettingsOpen]  = useState(false)
+
+  const activeLanguage = state.config?.language || 'es'
+
+  function toggleLanguage() {
+    const next = activeLanguage === 'es' ? 'en' : 'es'
+    dispatch({ type: ACTIONS.SET_CONFIG_FIELD, key: 'language', value: next })
+    i18n.changeLanguage(next)
+    localStorage.setItem('devforge_lang', next)
+  }
 
   // ── Estado del panel de recursos ──────────────────────────────────────
   // resourceTopic = null → abrir en modo picker (el usuario elige el tema)
@@ -419,7 +371,7 @@ export default function Header({ backTo, backLabel, rightContent }) {
               onMouseEnter={e => e.currentTarget.style.color = 'var(--primary)'}
               onMouseLeave={e => e.currentTarget.style.color = 'var(--subtle)'}
             >
-              ← {backLabel || 'Volver'}
+              ← {backLabel || t('common.back').replace('← ', '')}
             </button>
           )}
         </div>
@@ -428,19 +380,27 @@ export default function Header({ backTo, backLabel, rightContent }) {
         <div className="forge-header-right">
           {rightContent}
 
-          {/* ── Botón Recursos (📚) ─────────────────────────────────────────────
-              Disponible en TODA la app gracias a estar en el Header global.
-              El comportamiento cambia según la página (ver openResources arriba).
-          ─────────────────────────────────────────────────────────────────────── */}
+          {/* ── Botón Recursos ── */}
           <button
             onClick={openResources}
-            title="Recursos de aprendizaje"
+            title={t('common.resources')}
             style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 11px', background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text)', cursor: 'pointer', fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: 12, transition: 'border-color 0.15s', whiteSpace: 'nowrap' }}
             onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--primary)'}
             onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}
           >
             <span>📚</span>
-            <span className="forge-hide-sm">Recursos</span>
+            <span className="forge-hide-sm">{t('common.resources')}</span>
+          </button>
+
+          {/* ── Selector de idioma — toggle en un click ── */}
+          <button
+            onClick={toggleLanguage}
+            title={activeLanguage === 'es' ? 'Switch to English' : 'Cambiar a Español'}
+            style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 10px', background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text)', cursor: 'pointer', fontFamily: 'Space Mono, monospace', fontWeight: 700, fontSize: 11, transition: 'border-color 0.15s', whiteSpace: 'nowrap', letterSpacing: '0.04em' }}
+            onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--primary)'}
+            onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}
+          >
+            {activeLanguage === 'es' ? '🇦🇷 ES' : '🇺🇸 EN'}
           </button>
 
           {/* ── Botón Ajustes ── */}
@@ -451,7 +411,7 @@ export default function Header({ backTo, backLabel, rightContent }) {
             onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}
           >
             <span>⚙</span>
-            <span className="forge-hide-sm">{userName || 'Ajustes'}</span>
+            <span className="forge-hide-sm">{userName || t('common.settings')}</span>
           </button>
         </div>
       </header>

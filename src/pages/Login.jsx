@@ -20,6 +20,7 @@ import { useState } from 'react'
 import { useNavigate, useLocation, Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
+import { useTranslation } from 'react-i18next'
 import Header from '../components/ui/Header.jsx'
 
 
@@ -30,6 +31,7 @@ export default function Login() {
   const navigate   = useNavigate()
   const location   = useLocation()
   const { signIn } = useAuth()
+  const { t }      = useTranslation()
 
   // ─── Estado del formulario ──────────────────────────────────────────────
   const [email, setEmail]       = useState('')
@@ -142,17 +144,11 @@ export default function Login() {
    */
   function translateError(message) {
     const errorMap = {
-      'Invalid login credentials':
-        'Email o contraseña incorrectos.',
-      'Email not confirmed':
-        'Confirmá tu email antes de iniciar sesión. Revisá tu casilla.',
-      'Too many requests':
-        'Demasiados intentos. Esperá unos minutos e intentá de nuevo.',
-      'User not found':
-        'No existe una cuenta con ese email.',
+      'Invalid login credentials':  t('auth.errorWrongCredentials'),
+      'Email not confirmed':        t('auth.errorConfirmEmail'),
+      'Too many requests':          t('auth.errorRateLimit'),
+      'User not found':             t('auth.errorNoAccount'),
     }
-    // Si el error está en nuestro mapa, devolvemos la traducción
-    // Si no, devolvemos el mensaje original como fallback
     return errorMap[message] ?? `Error: ${message}`
   }
 
@@ -173,14 +169,14 @@ export default function Login() {
             <div className="flex items-center gap-3 mb-4">
               <span className="w-8 h-px bg-forge-amber" />
               <span className="font-mono text-forge-subtle text-xs uppercase tracking-widest">
-                Acceso
+                {t('auth.loginLabel')}
               </span>
             </div>
             <h1 className="font-display font-extrabold text-3xl text-forge-text">
-              Iniciá sesión
+              {t('auth.loginTitle')}
             </h1>
             <p className="font-mono text-forge-subtle text-sm mt-2">
-              Continuá tu entrenamiento donde lo dejaste.
+              {t('auth.loginSubtitle')}
             </p>
           </div>
 
@@ -200,14 +196,14 @@ export default function Login() {
                   htmlFor="email"
                   className="block font-mono text-forge-subtle text-xs uppercase tracking-widest mb-2"
                 >
-                  Email
+                  {t('auth.email')}
                 </label>
                 <input
                   id="email"
                   type="email"
                   value={email}
                   onChange={e => setEmail(e.target.value)}
-                  placeholder="tu@email.com"
+                  placeholder={t('auth.emailPlaceholder')}
                   required
                   autoComplete="email"
                   // input-forge: clase de globals.css con el estilo consistente
@@ -221,14 +217,14 @@ export default function Login() {
                   htmlFor="password"
                   className="block font-mono text-forge-subtle text-xs uppercase tracking-widest mb-2"
                 >
-                  Contraseña
+                  {t('auth.password')}
                 </label>
                 <input
                   id="password"
                   type="password"
                   value={password}
                   onChange={e => setPassword(e.target.value)}
-                  placeholder="••••••••"
+                  placeholder={t('auth.passwordPlaceholder')}
                   required
                   autoComplete="current-password"
                   className="input-forge"
@@ -251,14 +247,14 @@ export default function Login() {
                       style={{ background: 'var(--surface)' }}
                     >
                       <p className="font-mono text-forge-subtle text-xs mb-2">
-                        ¿No recibiste el email de confirmación?
+                        {t('auth.resendQuestion')}
                       </p>
                       <button
                         type="button"
                         onClick={handleResend}
                         className="font-mono text-forge-amber text-xs hover:underline transition-colors"
                       >
-                        Reenviar email de confirmación →
+                        {t('auth.resendBtn')}
                       </button>
                     </div>
                   )}
@@ -266,7 +262,7 @@ export default function Login() {
                   {/* Feedback del reenvío */}
                   {resendStatus === 'sending' && (
                     <p className="font-mono text-forge-subtle text-xs mt-2 text-center">
-                      Enviando...
+                      {t('auth.resendLoading')}
                     </p>
                   )}
                   {resendStatus === 'sent' && (
@@ -274,13 +270,13 @@ export default function Login() {
                       style={{ background: 'color-mix(in srgb, var(--green) 10%, transparent)' }}
                     >
                       <p className="font-mono text-forge-green text-xs">
-                        ✓ Email reenviado. Revisá tu bandeja (y el spam).
+                        {t('auth.resendSuccess')}
                       </p>
                     </div>
                   )}
                   {resendStatus === 'error' && (
                     <p className="font-mono text-forge-red text-xs mt-2 text-center">
-                      No se pudo reenviar. Intentá en unos minutos.
+                      {t('auth.resendError')}
                     </p>
                   )}
                 </div>
@@ -292,7 +288,7 @@ export default function Login() {
                 disabled={loading}
                 className="btn-primary w-full"
               >
-                {loading ? 'Iniciando sesión...' : 'Iniciar sesión →'}
+                {loading ? t('auth.loginLoading') : t('auth.loginBtn')}
               </button>
 
               {/* ── Link recuperar contraseña ── */}
@@ -301,7 +297,7 @@ export default function Login() {
                   to="/forgot-password"
                   className="hover:text-forge-amber transition-colors"
                 >
-                  ¿Olvidaste tu contraseña?
+                  {t('auth.forgotPassword')}
                 </Link>
               </p>
             </form>
@@ -309,12 +305,12 @@ export default function Login() {
 
           {/* ── Link a registro ── */}
           <p className="font-mono text-forge-subtle text-xs text-center mt-6">
-            ¿No tenés cuenta?{' '}
+            {t('auth.noAccount')}{' '}
             <Link
               to="/register"
               className="text-forge-amber hover:underline transition-colors"
             >
-              Registrate gratis
+              {t('auth.register')}
             </Link>
           </p>
 
@@ -323,8 +319,8 @@ export default function Login() {
 
       {/* Footer consistente con el resto de la app */}
       <footer className="forge-footer">
-        <span>DevForge — preparación técnica</span>
-        <span>Powered by Claude</span>
+        <span>{t('landing.footer')}</span>
+        <span>{t('landing.poweredBy')}</span>
       </footer>
 
     </div>

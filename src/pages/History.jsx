@@ -2,11 +2,12 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useStore } from '../store/index.jsx'
 import { getTopicById } from '../data/topics.js'
+import { useTranslation } from 'react-i18next'
 import Header from '../components/ui/Header.jsx'
 
-function formatDate(iso) {
+function formatDate(iso, lang = 'es') {
   if (!iso) return '—'
-  return new Date(iso).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+  return new Date(iso).toLocaleDateString(lang === 'en' ? 'en-US' : 'es-AR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
 function formatDuration(start, end) {
@@ -46,7 +47,8 @@ function ResumoStat({ label, value, accent }) {
   )
 }
 
-function SessionCard({ session, index, onExpand, expanded }) {
+function SessionCard({ session, index, onExpand, expanded, lang }) {
+  const { t }   = useTranslation()
   const topic   = getTopicById(session.topicId)
   const avg     = avgScore(session.answers)
   const answers = session.answers || []
@@ -66,9 +68,9 @@ function SessionCard({ session, index, onExpand, expanded }) {
             </span>
           </div>
           <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
-            <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)' }}>📅 {formatDate(session.startedAt)}</span>
+            <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)' }}>📅 {formatDate(session.startedAt, lang)}</span>
             <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)' }}>⏱ {formatDuration(session.startedAt, session.endedAt)}</span>
-            <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)' }}>❓ {answers.length} pregunta{answers.length !== 1 ? 's' : ''}</span>
+            <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)' }}>❓ {answers.length} {t('history.statQuestions').toLowerCase()}</span>
           </div>
         </div>
         <span style={{ fontSize: 9, color: 'var(--subtle)', display: 'inline-block', transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s', flexShrink: 0 }}>▼</span>
@@ -113,7 +115,7 @@ function SessionCard({ session, index, onExpand, expanded }) {
             </div>
           ) : (
             <div style={{ padding: 16, fontFamily: 'Space Mono, monospace', fontSize: 11, color: 'var(--subtle)', textAlign: 'center' }}>
-              Sin preguntas registradas.
+              {t('history.noQuestionsRecorded')}
             </div>
           )}
         </div>
@@ -125,7 +127,9 @@ function SessionCard({ session, index, onExpand, expanded }) {
 export default function History() {
   const navigate  = useNavigate()
   const { state } = useStore()
+  const { t }     = useTranslation()
   const history   = state.history || []
+  const lang      = state.config?.language || 'es'
   const [expanded, setExpanded] = useState(null)
 
   const totalSesiones  = history.length
@@ -142,35 +146,35 @@ export default function History() {
       <main className="forge-main forge-main-lg">
 
         <div style={{ marginBottom: 32 }}>
-          <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 6 }}>Historial de práctica</div>
-          <h1 style={{ fontFamily: 'Syne, sans-serif', fontWeight: 800, fontSize: 28, color: 'var(--text)', margin: 0 }}>Tus sesiones</h1>
+          <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 6 }}>{t('history.label')}</div>
+          <h1 style={{ fontFamily: 'Syne, sans-serif', fontWeight: 800, fontSize: 28, color: 'var(--text)', margin: 0 }}>{t('history.title')}</h1>
         </div>
 
         <div className="forge-grid-4" style={{ marginBottom: 36 }}>
-          <ResumoStat label="Sesiones" value={totalSesiones} accent />
-          <ResumoStat label="Preguntas" value={totalPreguntas} />
-          <ResumoStat label="Score promedio" value={scoreGlobal != null ? `${scoreGlobal}/10` : '—'} accent={scoreGlobal != null} />
-          <ResumoStat label="Temas" value={topicsCovered} />
+          <ResumoStat label={t('history.statSessions')} value={totalSesiones} accent />
+          <ResumoStat label={t('history.statQuestions')} value={totalPreguntas} />
+          <ResumoStat label={t('history.statAvgScore')} value={scoreGlobal != null ? `${scoreGlobal}/10` : '—'} accent={scoreGlobal != null} />
+          <ResumoStat label={t('history.statTopics')} value={topicsCovered} />
         </div>
 
         {history.length === 0 ? (
           <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', padding: '48px 24px', textAlign: 'center' }}>
             <div style={{ fontSize: 40, marginBottom: 16 }}>📭</div>
-            <div style={{ fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: 18, color: 'var(--text)', marginBottom: 8 }}>Sin sesiones todavía</div>
-            <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 11, color: 'var(--subtle)', marginBottom: 24 }}>Completá tu primera sesión de práctica para verla acá.</div>
+            <div style={{ fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: 18, color: 'var(--text)', marginBottom: 8 }}>{t('history.empty').replace('📭 ', '')}</div>
+            <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 11, color: 'var(--subtle)', marginBottom: 24 }}>{t('history.emptyDesc')}</div>
             <button onClick={() => navigate('/dashboard')} style={{ padding: '10px 20px', background: 'var(--primary)', border: 'none', color: '#000', cursor: 'pointer', fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: 13 }}>
-              Ir al Dashboard →
+              {t('history.goDashboard')}
             </button>
           </div>
         ) : (
           <div>
             <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 10 }}>
               <span style={{ flex: 1, height: 1, background: 'var(--border)', display: 'inline-block' }} />
-              {totalSesiones} sesión{totalSesiones !== 1 ? 'es' : ''} · más reciente primero
+              {totalSesiones} {t('history.statSessions').toLowerCase()}
               <span style={{ flex: 1, height: 1, background: 'var(--border)', display: 'inline-block' }} />
             </div>
             {history.map((session, i) => (
-              <SessionCard key={i} session={session} index={i} onExpand={i => setExpanded(prev => prev === i ? null : i)} expanded={expanded === i} />
+              <SessionCard key={i} session={session} index={i} lang={lang} onExpand={i => setExpanded(prev => prev === i ? null : i)} expanded={expanded === i} />
             ))}
           </div>
         )}
@@ -178,8 +182,8 @@ export default function History() {
       </main>
 
       <footer className="forge-footer">
-        <span>DevForge</span>
-        <button onClick={() => navigate('/dashboard')} style={{ background: 'none', border: 'none', color: 'var(--subtle)', cursor: 'pointer', fontFamily: 'Space Mono, monospace', fontSize: 10 }}>← Dashboard</button>
+        <span>{t('history.footer')}</span>
+        <button onClick={() => navigate('/dashboard')} style={{ background: 'none', border: 'none', color: 'var(--subtle)', cursor: 'pointer', fontFamily: 'Space Mono, monospace', fontSize: 10 }}>{t('history.backDashboard')}</button>
       </footer>
 
     </div>

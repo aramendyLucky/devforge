@@ -6,6 +6,7 @@ import { useProgress } from '../hooks/useProgress.js'
 import { useAI } from '../hooks/useAI.js'
 import { TOPICS, ALL_TOPIC_IDS } from '../data/topics.js'
 import { getQuestions, getQuestionCount, DIFFICULTY_LABEL } from '../data/questions.js'
+import { useTranslation } from 'react-i18next'
 import Header from '../components/ui/Header.jsx'
 
 const TOTAL_QUESTIONS = 5
@@ -84,24 +85,24 @@ function Timer({ seconds, total }) {
 
 // ─── Pantalla de intro ────────────────────────────────────
 function IntroScreen({ questions, onStart }) {
-  const topicNames = [...new Set(questions.map(q => q.topic.name))]
+  const { t } = useTranslation()
   return (
     <div style={{ textAlign: 'center', animation: 'slideUp 0.3s ease' }}>
       <div style={{ fontSize: 48, marginBottom: 16 }}>⚡</div>
       <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 8 }}>
-        Modo repaso rápido
+        {t('quickreview.mode')}
       </div>
       <h1 style={{ fontFamily: 'Syne, sans-serif', fontWeight: 800, fontSize: 30, color: 'var(--text)', marginBottom: 12 }}>
-        {TOTAL_QUESTIONS} preguntas · ~10 min
+        {t('quickreview.title', { count: TOTAL_QUESTIONS })}
       </h1>
       <p style={{ fontFamily: 'Space Mono, monospace', fontSize: 12, color: 'var(--subtle)', lineHeight: 1.7, marginBottom: 28, maxWidth: 400, margin: '0 auto 28px' }}>
-        Preguntas random de tus temas más débiles. Sin presión — aprendé del feedback y seguí adelante.
+        {t('quickreview.desc')}
       </p>
 
       {/* Temas que van a aparecer */}
       <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', padding: '14px 20px', marginBottom: 28, display: 'inline-block', textAlign: 'left', minWidth: 280 }}>
         <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--subtle)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 10 }}>
-          Temas de esta sesión
+          {t('quickreview.sessionTopics')}
         </div>
         {questions.map((q, i) => (
           <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
@@ -117,7 +118,7 @@ function IntroScreen({ questions, onStart }) {
 
       <div>
         <button onClick={onStart} style={{ padding: '13px 36px', background: 'var(--primary)', border: 'none', color: '#000', cursor: 'pointer', fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: 15 }}>
-          Empezar repaso →
+          {t('quickreview.startBtn')}
         </button>
       </div>
     </div>
@@ -126,6 +127,7 @@ function IntroScreen({ questions, onStart }) {
 
 // ─── Pantalla final ───────────────────────────────────────
 function ResultScreen({ answers, onRestart, onDashboard }) {
+  const { t } = useTranslation()
   const avg   = answers.length ? Math.round(answers.reduce((a, b) => a + (b.score || 0), 0) / answers.length) : 0
   const emoji = avg >= 8 ? '🔥' : avg >= 5 ? '💪' : '📚'
 
@@ -133,12 +135,12 @@ function ResultScreen({ answers, onRestart, onDashboard }) {
     <div style={{ animation: 'slideUp 0.3s ease' }}>
       <div style={{ textAlign: 'center', marginBottom: 32 }}>
         <div style={{ fontSize: 48, marginBottom: 12 }}>{emoji}</div>
-        <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 8 }}>Repaso completado</div>
+        <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 8 }}>{t('quickreview.complete')}</div>
         <h2 style={{ fontFamily: 'Syne, sans-serif', fontWeight: 800, fontSize: 32, color: 'var(--text)', marginBottom: 16 }}>
-          {avg >= 8 ? '¡Sólido!' : avg >= 5 ? 'Buen trabajo.' : 'Hay que practicar más.'}
+          {avg >= 8 ? t('quickreview.solid') : avg >= 5 ? t('quickreview.goodWork') : t('quickreview.needMorePractice')}
         </h2>
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10, background: 'var(--surface)', border: `2px solid ${scoreColor(avg)}`, padding: '10px 28px' }}>
-          <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 12, color: 'var(--subtle)' }}>Score promedio</span>
+          <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 12, color: 'var(--subtle)' }}>{t('session.avgScore')}</span>
           <span style={{ fontFamily: 'Syne, sans-serif', fontWeight: 800, fontSize: 30, color: scoreColor(avg) }}>{avg}/10</span>
         </div>
       </div>
@@ -147,7 +149,7 @@ function ResultScreen({ answers, onRestart, onDashboard }) {
       <div style={{ marginBottom: 24 }}>
         <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--subtle)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
           <span style={{ flex: 1, height: 1, background: 'var(--border)' }} />
-          Detalle por pregunta
+          {t('quickreview.detailPerQuestion')}
           <span style={{ flex: 1, height: 1, background: 'var(--border)' }} />
         </div>
         {answers.map((a, i) => (
@@ -174,9 +176,9 @@ function ResultScreen({ answers, onRestart, onDashboard }) {
         <button onClick={onRestart} style={{ flex: 1, padding: '12px 0', background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text)', cursor: 'pointer', fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: 13, transition: 'border-color 0.15s' }}
           onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--primary)'}
           onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}
-        >Otro repaso ⚡</button>
+        >{t('quickreview.anotherReview')}</button>
         <button onClick={onDashboard} style={{ flex: 1, padding: '12px 0', background: 'var(--primary)', border: 'none', color: '#000', cursor: 'pointer', fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: 13 }}>
-          Dashboard →
+          {t('common.dashboard')}
         </button>
       </div>
     </div>
@@ -185,6 +187,7 @@ function ResultScreen({ answers, onRestart, onDashboard }) {
 
 // ─── QuickReview principal ────────────────────────────────
 export default function QuickReview() {
+  const { t }     = useTranslation()
   const navigate  = useNavigate()
   const { state } = useStore()
   const { submitAnswer, startSession, endSession } = useSession()
@@ -354,7 +357,7 @@ export default function QuickReview() {
             {/* Hints */}
             {hints.map((h, i) => (
               <div key={i} style={{ background: 'var(--surface)', borderLeft: `3px solid ${['var(--green)','var(--primary)','var(--red)'][h.level-1]}`, padding: '10px 14px', marginBottom: 10, animation: 'fadeIn 0.3s ease' }}>
-                <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: ['var(--green)','var(--primary)','var(--red)'][h.level-1], textTransform: 'uppercase', marginBottom: 4 }}>💡 Pista {h.level}</div>
+                <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: ['var(--green)','var(--primary)','var(--red)'][h.level-1], textTransform: 'uppercase', marginBottom: 4 }}>{t('session.hint', { level: h.level })}</div>
                 <p style={{ fontFamily: 'Space Mono, monospace', fontSize: 11, color: 'var(--text)', margin: 0, lineHeight: 1.6 }}>{h.text}</p>
               </div>
             ))}
@@ -373,13 +376,13 @@ export default function QuickReview() {
                 <div style={{ display: 'flex', gap: 10 }}>
                   <button onClick={handleHint} disabled={loading || hintLevel > 3}
                     style={{ padding: '9px 16px', background: 'var(--card)', border: '1px solid var(--border)', color: hintLevel > 3 ? 'var(--muted)' : 'var(--subtle)', cursor: hintLevel > 3 ? 'default' : 'pointer', fontFamily: 'Space Mono, monospace', fontSize: 11 }}>
-                    {hintLevel > 3 ? 'Sin más pistas' : `💡 Pista${hintLevel > 1 ? ` ${hintLevel}` : ''}`}
+                    {hintLevel > 3 ? t('quickreview.noMoreHints') : `💡 ${t('session.hint', { level: hintLevel > 1 ? hintLevel : '' }).trim()}`}
                   </button>
                   <button onClick={handleEvaluate} disabled={answer.trim().length < 10 || phase === 'evaluating'}
                     style={{ flex: 1, padding: '9px 0', background: answer.trim().length < 10 ? 'var(--muted)' : 'var(--primary)', border: 'none', color: '#000', cursor: answer.trim().length < 10 ? 'default' : 'pointer', fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
                     {phase === 'evaluating' ? (
-                      <><span style={{ width: 12, height: 12, border: '2px solid #000', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.6s linear infinite', display: 'inline-block' }} />Evaluando...</>
-                    ) : 'Evaluar →'}
+                      <><span style={{ width: 12, height: 12, border: '2px solid #000', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.6s linear infinite', display: 'inline-block' }} />{t('quickreview.evaluating')}</>
+                    ) : t('quickreview.evaluate')}
                   </button>
                 </div>
               </div>
@@ -393,7 +396,7 @@ export default function QuickReview() {
                   <div style={{ fontFamily: 'Syne, sans-serif', fontWeight: 800, fontSize: 40, color: scoreColor(evaluation.score), lineHeight: 1, flexShrink: 0 }}>{evaluation.score}</div>
                   <div>
                     <div style={{ fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: 14, color: 'var(--text)', marginBottom: 4 }}>
-                      {evaluation.score >= 8 ? '¡Excelente!' : evaluation.score >= 5 ? 'Aceptable.' : 'A mejorar.'}
+                      {evaluation.score >= 8 ? t('session.scoreExcellent') : evaluation.score >= 5 ? t('session.scoreGood') : t('session.scoreNeedsWork')}
                     </div>
                     {evaluation.keyMissing && (
                       <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 11, color: 'var(--primary)' }}>💡 {evaluation.keyMissing}</div>
@@ -422,7 +425,7 @@ export default function QuickReview() {
                 )}
 
                 <button onClick={handleNext} style={{ width: '100%', padding: '12px 0', background: 'var(--primary)', border: 'none', color: '#000', cursor: 'pointer', fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: 14 }}>
-                  {isLast ? 'Ver resultado final →' : 'Siguiente →'}
+                  {isLast ? t('quickreview.finalResult') : t('quickreview.nextBtn')}
                 </button>
               </div>
             )}

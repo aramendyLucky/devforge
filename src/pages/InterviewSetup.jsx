@@ -25,6 +25,7 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { TOPICS } from '../data/topics.js'
 import { getQuestions } from '../data/questions.js'
 import { useAI } from '../hooks/useAI.js'
@@ -47,16 +48,17 @@ import Header from '../components/ui/Header.jsx'
 
 const STORAGE_KEY = 'devforge_saved_offers'
 
+// Note: DURATIONS and DIFFICULTIES labels/descs are translated at render time using t()
 const DURATIONS = [
-  { value: 20, label: '20 min', desc: 'Corta — ~6 preguntas'    },
-  { value: 45, label: '45 min', desc: 'Estándar — ~12 preguntas' },
-  { value: 60, label: '60 min', desc: 'Extensa — ~16 preguntas'  },
+  { value: 20, labelKey: 'interview.duration20', descKey: 'interview.duration20Desc' },
+  { value: 45, labelKey: 'interview.duration45', descKey: 'interview.duration45Desc' },
+  { value: 60, labelKey: 'interview.duration60', descKey: 'interview.duration60Desc' },
 ]
 
 const DIFFICULTIES = [
-  { value: 'basic',  label: 'Junior',    desc: 'Solo básicas',         color: 'var(--green)'   },
-  { value: 'mixed',  label: 'Mid-level', desc: 'Básico + intermedio',  color: 'var(--primary)' },
-  { value: 'senior', label: 'Senior',    desc: 'Intermedio + senior',  color: 'var(--red)'     },
+  { value: 'basic',  labelKey: 'interview.levelJunior', descKey: 'interview.levelJuniorDesc', color: 'var(--green)'   },
+  { value: 'mixed',  labelKey: 'interview.levelMid',    descKey: 'interview.levelMidDesc',    color: 'var(--primary)' },
+  { value: 'senior', labelKey: 'interview.levelSenior', descKey: 'interview.levelSeniorDesc', color: 'var(--red)'     },
 ]
 
 // Ofertas fijas: los topics tienen tier=1 por defecto (todos son críticos en el preset)
@@ -82,9 +84,9 @@ const FIXED_PRESETS = [
 ]
 
 const TIER_META = {
-  1: { label: 'Crítico',       color: 'var(--red)',     bg: 'color-mix(in srgb, var(--red) 8%, transparent)'     },
-  2: { label: 'Importante',    color: 'var(--primary)', bg: 'color-mix(in srgb, var(--primary) 8%, transparent)' },
-  3: { label: 'Diferenciador', color: 'var(--subtle)',  bg: 'transparent'                                        },
+  1: { labelKey: 'common.tier1', color: 'var(--red)',     bg: 'color-mix(in srgb, var(--red) 8%, transparent)'     },
+  2: { labelKey: 'common.tier2', color: 'var(--primary)', bg: 'color-mix(in srgb, var(--primary) 8%, transparent)' },
+  3: { labelKey: 'common.tier3', color: 'var(--subtle)',  bg: 'transparent'                                        },
 }
 
 // ─── useSavedOffers ───────────────────────────────────────────────────────
@@ -165,17 +167,18 @@ function useSavedOffers() {
  * @param {Array} topics — [{ id, name, tier, category }]
  */
 function SkillsBreakdown({ topics }) {
+  const { t } = useTranslation()
   if (!topics || topics.length === 0) return null
 
   // Separar skills por tier
   const byTier = { 1: [], 2: [], 3: [] }
-  topics.forEach(t => {
-    const tier = t.tier || 1
-    if (byTier[tier]) byTier[tier].push(t)
+  topics.forEach(tp => {
+    const tier = tp.tier || 1
+    if (byTier[tier]) byTier[tier].push(tp)
   })
 
   // Calcular cobertura (cuántas tienen preguntas en DevForge)
-  const covered = topics.filter(t => TOPICS.some(x => x.id === t.id))
+  const covered = topics.filter(tp => TOPICS.some(x => x.id === tp.id))
   const pct = Math.round((covered.length / topics.length) * 100)
 
   return (
@@ -184,7 +187,7 @@ function SkillsBreakdown({ topics }) {
       {/* Header de cobertura */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
         <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--subtle)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-          Skills del perfil
+          {t('interview.skillsBreakdown')}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           {/* Barra de cobertura */}
@@ -206,17 +209,17 @@ function SkillsBreakdown({ topics }) {
           <div key={tier} style={{ marginBottom: tier < 3 ? 10 : 0 }}>
             {/* Etiqueta del tier */}
             <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 8, color: meta.color, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 5 }}>
-              {meta.label}
+              {t(meta.labelKey)}
             </div>
             {/* Chips de skills */}
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-              {tierTopics.map(t => {
-                const inCatalog = TOPICS.some(x => x.id === t.id)
-                const topicData = TOPICS.find(x => x.id === t.id)
+              {tierTopics.map(tp => {
+                const inCatalog = TOPICS.some(x => x.id === tp.id)
+                const topicData = TOPICS.find(x => x.id === tp.id)
                 return (
                   <span
-                    key={t.id}
-                    title={inCatalog ? `Tiene preguntas en DevForge` : 'Detectada — sin preguntas aún'}
+                    key={tp.id}
+                    title={inCatalog ? t('interview.hasQuestions') : t('interview.noQuestions')}
                     style={{
                       fontFamily: 'Space Mono, monospace',
                       fontSize: 9,
@@ -230,7 +233,7 @@ function SkillsBreakdown({ topics }) {
                       gap: 3,
                     }}
                   >
-                    {topicData?.icon || (inCatalog ? '✓' : '·')} {t.name}
+                    {topicData?.icon || (inCatalog ? '✓' : '·')} {tp.name}
                   </span>
                 )
               })}
@@ -240,7 +243,7 @@ function SkillsBreakdown({ topics }) {
       })}
 
       {/* Leyenda */}
-      {topics.some(t => !TOPICS.some(x => x.id === t.id)) && (
+      {topics.some(tp => !TOPICS.some(x => x.id === tp.id)) && (
         <div style={{ marginTop: 10, fontFamily: 'Space Mono, monospace', fontSize: 8, color: 'var(--subtle)', lineHeight: 1.5 }}>
           Skills sin borde = detectadas pero sin preguntas en DevForge aún
         </div>
@@ -259,6 +262,7 @@ function SkillsBreakdown({ topics }) {
  * @param {Function} onCancel — cuando el usuario cierra el panel
  */
 function OfferAnalysisPanel({ onSave, onCancel }) {
+  const { t }   = useTranslation()
   const fileRef = useRef(null)
 
   const [mode,       setMode]       = useState('url')   // 'url' | 'file' | 'text'
@@ -575,6 +579,7 @@ function Divider({ children }) {
 
 // ─── InterviewSetup principal ─────────────────────────────────────────────
 export default function InterviewSetup() {
+  const { t }    = useTranslation()
   const navigate = useNavigate()
   const { offers: savedOffers, loading: offersLoading, saveOffer, deleteOffer } = useSavedOffers()
 
@@ -655,48 +660,48 @@ export default function InterviewSetup() {
         {/* Título */}
         <div style={{ marginBottom: 28 }}>
           <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 6 }}>
-            Modo entrevista
+            {t('interview.configureLabel')}
           </div>
           <h1 style={{ fontFamily: 'Syne, sans-serif', fontWeight: 800, fontSize: 28, color: 'var(--text)', margin: '0 0 6px' }}>
-            Configurá tu entrevista
+            {t('interview.configureTitle')}
           </h1>
           <p style={{ fontFamily: 'Space Mono, monospace', fontSize: 11, color: 'var(--subtle)', lineHeight: 1.7, margin: 0 }}>
-            Sin hints. Presión real. Feedback completo al final.
+            {t('interview.configureSubtitle')}
           </p>
         </div>
 
         {/* ── Duración ── */}
-        <Divider>Duración</Divider>
+        <Divider>{t('interview.durationLabel')}</Divider>
         <div className="forge-grid-3" style={{ marginBottom: 4 }}>
           {DURATIONS.map(d => (
             <div key={d.value} onClick={() => setDuration(d.value)}
               style={{ padding: '12px 10px', background: 'var(--surface)', border: `2px solid ${duration === d.value ? 'var(--primary)' : 'var(--border)'}`, cursor: 'pointer', transition: 'border-color 0.15s', textAlign: 'center' }}
             >
-              <div style={{ fontFamily: 'Syne, sans-serif', fontWeight: 800, fontSize: 20, color: duration === d.value ? 'var(--primary)' : 'var(--text)', marginBottom: 3 }}>{d.label}</div>
-              <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)' }}>{d.desc}</div>
+              <div style={{ fontFamily: 'Syne, sans-serif', fontWeight: 800, fontSize: 20, color: duration === d.value ? 'var(--primary)' : 'var(--text)', marginBottom: 3 }}>{t(d.labelKey)}</div>
+              <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)' }}>{t(d.descKey)}</div>
             </div>
           ))}
         </div>
 
         {/* ── Nivel ── */}
-        <Divider>Nivel de dificultad</Divider>
+        <Divider>{t('interview.difficultyLabel')}</Divider>
         <div className="forge-grid-3">
           {DIFFICULTIES.map(d => (
             <div key={d.value} onClick={() => setDifficulty(d.value)}
               style={{ padding: '12px 10px', background: 'var(--surface)', border: `2px solid ${difficulty === d.value ? d.color : 'var(--border)'}`, cursor: 'pointer', transition: 'border-color 0.15s', textAlign: 'center' }}
             >
-              <div style={{ fontFamily: 'Syne, sans-serif', fontWeight: 800, fontSize: 15, color: difficulty === d.value ? d.color : 'var(--text)', marginBottom: 3 }}>{d.label}</div>
-              <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)' }}>{d.desc}</div>
+              <div style={{ fontFamily: 'Syne, sans-serif', fontWeight: 800, fontSize: 15, color: difficulty === d.value ? d.color : 'var(--text)', marginBottom: 3 }}>{t(d.labelKey)}</div>
+              <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)' }}>{t(d.descKey)}</div>
             </div>
           ))}
         </div>
 
         {/* ── PERFIL DE ENTREVISTA ── */}
-        <Divider>Perfil de entrevista</Divider>
+        <Divider>{t('interview.profileLabel')}</Divider>
 
         {/* ─── SECCIÓN A: Ofertas rápidas (presets fijos) ─── */}
         <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--subtle)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 }}>
-          Ofertas rápidas
+          {t('interview.quickOffers')}
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 18 }}>
           {FIXED_PRESETS.map(p => {
@@ -726,16 +731,16 @@ export default function InterviewSetup() {
         {/* ─── SECCIÓN B: Mis ofertas guardadas ─── */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
           <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--subtle)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-            Mis ofertas guardadas
+            {t('interview.savedOffers')}
           </div>
           <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--subtle)' }}>
-            {savedOffers.length} guardada{savedOffers.length !== 1 ? 's' : ''}
+            {t('interview.savedCount', { count: savedOffers.length })}
           </span>
         </div>
 
         {offersLoading ? (
           <div style={{ padding: '12px 14px', background: 'var(--card)', border: '1px dashed var(--border)', fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)', textAlign: 'center', marginBottom: 10 }}>
-            Cargando ofertas...
+            {t('interview.loadingOffers')}
           </div>
         ) : savedOffers.length > 0 ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
@@ -784,7 +789,7 @@ export default function InterviewSetup() {
           </div>
         ) : (
           <div style={{ padding: '12px 14px', background: 'var(--card)', border: '1px dashed var(--border)', fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)', textAlign: 'center', marginBottom: 10 }}>
-            Todavía no guardaste ninguna oferta analizada
+            {t('interview.noSavedOffers')}
           </div>
         )}
 
@@ -794,7 +799,7 @@ export default function InterviewSetup() {
           style={{ width: '100%', padding: '10px 0', background: showAnalysis ? 'var(--surface)' : 'var(--card)', border: `1px solid ${showAnalysis ? 'var(--primary)' : 'var(--border)'}`, color: showAnalysis ? 'var(--primary)' : 'var(--subtle)', cursor: 'pointer', fontFamily: 'Space Mono, monospace', fontSize: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, transition: 'all 0.15s', marginBottom: 18 }}
         >
           <span style={{ fontSize: 14 }}>📎</span>
-          {showAnalysis ? '✕ Cerrar análisis' : '+ Analizar nueva oferta con IA'}
+          {showAnalysis ? t('interview.closeAnalysis') : t('interview.analyzeNew')}
           <span style={{ padding: '1px 5px', background: 'var(--primary)', color: '#000', fontFamily: 'Space Mono, monospace', fontSize: 8, fontWeight: 700 }}>IA</span>
         </button>
 
@@ -808,18 +813,18 @@ export default function InterviewSetup() {
 
         {/* ─── SECCIÓN C: Personalizada ─── */}
         <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--subtle)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8, marginTop: savedOffers.length > 0 ? 0 : 4 }}>
-          Modo personalizado
+          {t('interview.customMode')}
         </div>
         <div onClick={() => { setSelectedId('custom'); setShowAnalysis(false) }} style={CARD(selectedId === 'custom')}>
           <span style={{ fontSize: 20, flexShrink: 0 }}>⚙️</span>
           <div style={{ flex: 1 }}>
             <div style={{ fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: 13, color: selectedId === 'custom' ? 'var(--primary)' : 'var(--text)', marginBottom: 3 }}>
-              Personalizada
+              {t('interview.customLabel')}
             </div>
             <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)' }}>
               {selectedId === 'custom' && customTopics.length > 0
-                ? `${customTopics.length} tema${customTopics.length !== 1 ? 's' : ''} seleccionado${customTopics.length !== 1 ? 's' : ''}`
-                : 'Elegí los temas vos mismo'
+                ? t('interview.customTopicsSelected', { count: customTopics.length })
+                : t('interview.customDesc')
               }
             </div>
           </div>
@@ -868,13 +873,13 @@ export default function InterviewSetup() {
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', rowGap: 12 }}>
             <div>
               <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--subtle)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 5 }}>
-                Resumen de la entrevista
+                {t('interview.interviewSummary')}
               </div>
               <div style={{ fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: 15, color: 'var(--text)', marginBottom: 3 }}>
-                {duration} min · {DIFFICULTIES.find(d => d.value === difficulty)?.label} · ~{approxQ} preguntas
+                {duration} min · {t(DIFFICULTIES.find(d => d.value === difficulty)?.labelKey)} · ~{approxQ} {t('history.statQuestions').toLowerCase()}
               </div>
               <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)' }}>
-                {selectedTopicIds.length} tema{selectedTopicIds.length !== 1 ? 's' : ''} · Sin hints · Feedback al final
+                {t('interview.rules')}
               </div>
             </div>
             <button
@@ -882,7 +887,7 @@ export default function InterviewSetup() {
               disabled={!selectedTopicIds.length}
               style={{ padding: '12px 28px', background: selectedTopicIds.length ? 'var(--primary)' : 'var(--muted)', border: 'none', color: '#000', cursor: selectedTopicIds.length ? 'pointer' : 'default', fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: 14, whiteSpace: 'nowrap', flexShrink: 0 }}
             >
-              Iniciar entrevista →
+              {t('interview.startInterview')}
             </button>
           </div>
         </div>
@@ -890,8 +895,8 @@ export default function InterviewSetup() {
       </main>
 
       <footer className="forge-footer">
-        <span>DevForge</span>
-        <button onClick={() => navigate('/dashboard')} style={{ background: 'none', border: 'none', color: 'var(--subtle)', cursor: 'pointer', fontFamily: 'Space Mono, monospace', fontSize: 10 }}>← Dashboard</button>
+        <span>{t('history.footer')}</span>
+        <button onClick={() => navigate('/dashboard')} style={{ background: 'none', border: 'none', color: 'var(--subtle)', cursor: 'pointer', fontFamily: 'Space Mono, monospace', fontSize: 10 }}>{t('history.backDashboard')}</button>
       </footer>
     </div>
   )

@@ -14,6 +14,20 @@
  * ¿Por qué en el hash y no en query params?
  *   El hash nunca se envía al servidor — queda solo en el cliente.
  *   Es más seguro porque los tokens no aparecen en logs de servidor.
+ *
+ * BUG CORREGIDO (race condition):
+ *   El problema original era que `tokenOk` arrancaba en `false`, lo que
+ *   hacía que el mensaje de "link inválido" apareciera INMEDIATAMENTE al
+ *   cargar la página, ANTES de que Supabase procesara el token del hash.
+ *
+ *   Solución: agregamos `checking` (true por defecto) que muestra un spinner
+ *   mientras Supabase procesa el hash. Sólo después de recibir el evento
+ *   PASSWORD_RECOVERY (o que expire el timeout) mostramos el estado final.
+ *
+ *   Flujo correcto:
+ *     checking=true  → spinner "Verificando link..."
+ *     PASSWORD_RECOVERY dispara  → checking=false, tokenOk=true → formulario
+ *     timeout (4s) sin evento    → checking=false, tokenOk=false → error
  */
 
 import { useState, useEffect } from 'react'
@@ -24,25 +38,68 @@ import Header from '../components/ui/Header.jsx'
 export default function ResetPassword() {
   const navigate = useNavigate()
 
+  // ── Estado del formulario ────────────────────────────────────────────────
   const [password,  setPassword]  = useState('')
   const [confirm,   setConfirm]   = useState('')
-  const [loading,   setLoading]   = useState(false)
+  const [loading,   setLoading]   = useState(false)   // enviando el update
   const [error,     setError]     = useState(null)
-  const [tokenOk,   setTokenOk]   = useState(false)  // el hash de la URL es válido
-  const [done,      setDone]      = useState(false)
+  const [done,      setDone]      = useState(false)   // contraseña actualizada con éxito
 
-  // Verificamos que la URL tenga un token de recovery válido.
-  // supabase-js dispara el evento PASSWORD_RECOVERY cuando detecta
-  // un hash con type=recovery en la URL.
+  // ── Estado del token ─────────────────────────────────────────────────────
+  /**
+   * checking: true mientras esperamos que Supabase procese el hash de la URL.
+   * Arranca en true para mostrar un spinner en lugar del mensaje de error.
+   * Se pone en false cuando llegue el evento PASSWORD_RECOVERY o el timeout.
+   */
+  const [checking,  setChecking]  = useState(true)
+
+  /**
+   * tokenOk: true si Supabase confirmó que el hash es un token de recovery válido.
+   * Se define sólo cuando checking pasa a false.
+   */
+  const [tokenOk,   setTokenOk]   = useState(false)
+
   useEffect(() => {
+    /**
+     * Escuchamos el evento PASSWORD_RECOVERY que supabase-js dispara
+     * cuando detecta un hash de tipo recovery en la URL.
+     *
+     * Si el evento llega → token válido → mostramos el formulario.
+     * Si no llega en 4 segundos → token inválido/expirado → mostramos error.
+     *
+     * Los 4 segundos son conservadores: en la práctica supabase-js procesa
+     * el hash en menos de 1 segundo, pero queremos dar margen para conexiones lentas.
+     */
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
       if (event === 'PASSWORD_RECOVERY') {
+        // Token válido — habilitamos el formulario
         setTokenOk(true)
+        setChecking(false)
       }
     })
-    return () => subscription.unsubscribe()
+
+    // Timeout de seguridad: si a los 4 segundos no llegó el evento,
+    // asumimos que el link es inválido o expiró.
+    const timeout = setTimeout(() => {
+      setChecking(prev => {
+        // Si todavía estamos checking (el evento no llegó), marcamos como inválido
+        if (prev) setTokenOk(false)
+        return false
+      })
+    }, 4000)
+
+    return () => {
+      subscription.unsubscribe()
+      clearTimeout(timeout)
+    }
   }, [])
 
+  /**
+   * handleSubmit — valida y actualiza la contraseña en Supabase.
+   *
+   * supabase.auth.updateUser() usa la sesión temporal de recovery
+   * establecida por el token del hash. Si la sesión expiró, devuelve error.
+   */
   async function handleSubmit(e) {
     e.preventDefault()
 
@@ -67,8 +124,8 @@ export default function ResetPassword() {
       return
     }
 
+    // Éxito: marcamos done y redirigimos al dashboard después de 2 segundos
     setDone(true)
-    // Redirigimos al dashboard después de 2 segundos
     setTimeout(() => navigate('/dashboard', { replace: true }), 2000)
   }
 
@@ -97,29 +154,45 @@ export default function ResetPassword() {
 
           <div className="card border-forge-border">
 
-            {/* ── Estado: contraseña cambiada exitosamente ── */}
-            {done ? (
+            {/* ── Estado: verificando token (spinner) ── */}
+            {checking ? (
+              <div className="animate-fade-in text-center py-6">
+                {/*
+                 * Mostramos este spinner mientras Supabase procesa el hash.
+                 * Sin este estado, el usuario vería "link inválido" por un flash
+                 * de ~500ms antes de que llegue el evento PASSWORD_RECOVERY.
+                 */}
+                <div className="flex flex-col items-center gap-3">
+                  <div className="w-8 h-8 border-2 border-forge-amber border-t-transparent rounded-full animate-spin" />
+                  <p className="font-mono text-forge-subtle text-xs">
+                    Verificando link de recuperación...
+                  </p>
+                </div>
+              </div>
+
+            ) : done ? (
+              /* ── Estado: contraseña cambiada exitosamente ── */
               <div className="animate-fade-in text-center">
                 <div
                   className="mb-5 px-4 py-4 border border-forge-green"
                   style={{ background: 'color-mix(in srgb, var(--green) 10%, transparent)' }}
                 >
                   <p className="font-mono text-forge-green text-xs leading-relaxed">
-                    ✓ Contraseña actualizada correctamente.<br />
+                    Contrasena actualizada correctamente.<br />
                     Redirigiendo al dashboard...
                   </p>
                 </div>
               </div>
 
             ) : !tokenOk ? (
-              /* ── Link inválido o expirado ── */
+              /* ── Estado: link inválido o expirado ── */
               <div className="animate-fade-in">
                 <div
                   className="mb-5 px-4 py-4 border border-forge-red"
                   style={{ background: 'color-mix(in srgb, var(--red) 10%, transparent)' }}
                 >
                   <p className="font-mono text-forge-red text-xs leading-relaxed">
-                    El link de recuperación es inválido o ya expiró.<br />
+                    El link de recuperacion es invalido o ya expiro.<br />
                     Solicitá uno nuevo desde la pantalla de login.
                   </p>
                 </div>
@@ -127,12 +200,12 @@ export default function ResetPassword() {
                   onClick={() => navigate('/forgot-password')}
                   className="btn-primary w-full"
                 >
-                  Solicitar nuevo link →
+                  Solicitar nuevo link
                 </button>
               </div>
 
             ) : (
-              /* ── Formulario de nueva contraseña ── */
+              /* ── Estado: formulario de nueva contraseña ── */
               <form onSubmit={handleSubmit} noValidate>
                 <div className="mb-4">
                   <label
@@ -146,7 +219,7 @@ export default function ResetPassword() {
                     type="password"
                     value={password}
                     onChange={e => setPassword(e.target.value)}
-                    placeholder="Mínimo 8 caracteres"
+                    placeholder="Minimo 8 caracteres"
                     required
                     autoFocus
                     autoComplete="new-password"
@@ -159,14 +232,14 @@ export default function ResetPassword() {
                     htmlFor="confirm"
                     className="block font-mono text-forge-subtle text-xs uppercase tracking-widest mb-2"
                   >
-                    Confirmá la contraseña
+                    Confirma la contraseña
                   </label>
                   <input
                     id="confirm"
                     type="password"
                     value={confirm}
                     onChange={e => setConfirm(e.target.value)}
-                    placeholder="Repetí la contraseña"
+                    placeholder="Repeti la contraseña"
                     required
                     autoComplete="new-password"
                     className="input-forge"
@@ -187,7 +260,7 @@ export default function ResetPassword() {
                   disabled={loading || !password || !confirm}
                   className="btn-primary w-full"
                 >
-                  {loading ? 'Guardando...' : 'Guardar nueva contraseña →'}
+                  {loading ? 'Guardando...' : 'Guardar nueva contraseña'}
                 </button>
               </form>
             )}
@@ -197,7 +270,7 @@ export default function ResetPassword() {
       </main>
 
       <footer className="forge-footer">
-        <span>DevForge — preparación técnica</span>
+        <span>DevForge — preparacion tecnica</span>
         <span>Powered by Claude</span>
       </footer>
     </div>

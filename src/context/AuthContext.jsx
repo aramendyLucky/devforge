@@ -127,7 +127,27 @@ export function AuthProvider({ children }) {
    * es inmediato después del registro.
    */
   async function signUp(email, password) {
-    const { data, error } = await supabase.auth.signUp({ email, password })
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        /**
+         * emailRedirectTo — URL a la que Supabase redirige después de que
+         * el usuario hace click en el email de confirmación.
+         *
+         * SIN esto, Supabase usa el "Site URL" del dashboard, que en proyectos
+         * nuevos suele ser http://localhost:3000 → el link lleva al local del dev
+         * en lugar de a la app en producción (https://devforge.lucasaramendy.com).
+         *
+         * window.location.origin resuelve automáticamente:
+         *   - En desarrollo: http://localhost:5173
+         *   - En producción: https://devforge.lucasaramendy.com
+         *
+         * La '/' al final lleva al usuario al Landing/Dashboard según su estado.
+         */
+        emailRedirectTo: `${window.location.origin}/`,
+      },
+    })
 
     // Si el usuario existe pero no confirmó su email, Supabase devuelve
     // un objeto con identities vacío en lugar de un error explícito.

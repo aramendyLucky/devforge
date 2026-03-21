@@ -772,10 +772,10 @@ Analyze the compatibility and return the complete JSON.`
                 {result.score_breakdown && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                     {[
-                      { label: activeLang === 'en' ? 'Tech skills'   : 'Skills técnicas',   key: 'technical_skills'  },
-                      { label: activeLang === 'en' ? 'Seniority'     : 'Seniority',          key: 'seniority_match'   },
-                      { label: activeLang === 'en' ? 'Domain'        : 'Dominio',             key: 'domain_experience' },
-                      { label: activeLang === 'en' ? 'ATS keywords'  : 'Keywords ATS',       key: 'keywords_ats'      },
+                      { label: t('cvmatcher.scoreBreakdownTechnical'), key: 'technical_skills'  },
+                      { label: t('cvmatcher.scoreBreakdownSeniority'), key: 'seniority_match'   },
+                      { label: t('cvmatcher.scoreBreakdownDomain'),    key: 'domain_experience' },
+                      { label: t('cvmatcher.scoreBreakdownAts'),       key: 'keywords_ats'      },
                     ].map(({ label, key }) => (
                       <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--subtle)', width: 90, flexShrink: 0 }}>

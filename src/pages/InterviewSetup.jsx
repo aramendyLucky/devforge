@@ -678,6 +678,67 @@ function Divider({ children }) {
   )
 }
 
+// ─── StepBar ──────────────────────────────────────────────────────────────
+/**
+ * Barra de progreso visual para el flujo de 3 pasos de FASE 4.
+ *
+ * Diseño: círculo numerado → ✓ cuando el paso ya pasó · línea conectora coloreada
+ * Las transiciones (color, background) son CSS transitions de 0.25s para que se
+ * vea fluido al avanzar entre pasos.
+ *
+ * @param {number}   step   — paso activo (1, 2 o 3)
+ * @param {string[]} labels — etiqueta de cada paso (ya traducida por el caller)
+ */
+function StepBar({ step, labels }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 0, marginBottom: 28 }}>
+      {labels.map((label, i) => {
+        const n      = i + 1
+        const done   = step > n
+        const active = step === n
+        return (
+          <div key={n} style={{ display: 'flex', alignItems: 'flex-start', flex: i < labels.length - 1 ? 1 : 'none' }}>
+            {/* Columna: círculo indicador + etiqueta */}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, flexShrink: 0 }}>
+              {/* Círculo: relleno (done) / borde+color primary (active) / gris (pending) */}
+              <div style={{
+                width: 28, height: 28, borderRadius: '50%',
+                background: done ? 'var(--primary)' : active ? 'color-mix(in srgb, var(--primary) 15%, var(--surface))' : 'var(--surface)',
+                border: `2px solid ${done || active ? 'var(--primary)' : 'var(--border)'}`,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontFamily: 'Space Mono, monospace', fontSize: 10, fontWeight: 700,
+                color: done ? '#000' : active ? 'var(--primary)' : 'var(--subtle)',
+                transition: 'all 0.25s',
+                flexShrink: 0,
+              }}>
+                {done ? '✓' : n}
+              </div>
+              {/* Etiqueta en uppercase debajo del círculo */}
+              <div style={{
+                fontFamily: 'Space Mono, monospace', fontSize: 8,
+                color: active ? 'var(--primary)' : done ? 'var(--text)' : 'var(--subtle)',
+                textTransform: 'uppercase', letterSpacing: '0.08em',
+                whiteSpace: 'nowrap', transition: 'color 0.25s',
+              }}>
+                {label}
+              </div>
+            </div>
+            {/* Línea conectora — se pinta de primary cuando el paso fue completado */}
+            {i < labels.length - 1 && (
+              <div style={{
+                flex: 1, height: 2,
+                marginTop: 13,  // centrada sobre el círculo de 28px (28/2 - 2/2 = 13)
+                background: step > n ? 'var(--primary)' : 'var(--border)',
+                transition: 'background 0.3s',
+              }} />
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 // ─── InterviewSetup principal ─────────────────────────────────────────────
 export default function InterviewSetup() {
   const { t }       = useTranslation()
@@ -694,6 +755,20 @@ export default function InterviewSetup() {
   const [selectedId,    setSelectedId]    = useState('fullstack')   // preset ID seleccionado
   const [customTopics,  setCustomTopics]  = useState([])
   const [showAnalysis,  setShowAnalysis]  = useState(false)
+
+  // ── Estado FASE 4: flujo multi-paso + smart default ─────────────────────
+  /**
+   * step: paso activo del flujo de configuración.
+   *   1 = Selección de perfil (ofertas, presets, custom)
+   *   2 = Configuración (duración + dificultad)
+   *   3 = Resumen y lanzamiento
+   */
+  const [step,              setStep]              = useState(1)
+  /**
+   * difficultyAutoSet: true cuando el nivel fue sugerido automáticamente
+   * por el stack de una oferta guardada. Se limpia si el usuario elige manualmente.
+   */
+  const [difficultyAutoSet, setDifficultyAutoSet] = useState(false)
 
   // ── Estado FASE 3: búsqueda, orden, edición inline, confirmación delete ──
   const [offerSearch,     setOfferSearch]     = useState('')           // filtro texto libre
@@ -773,6 +848,32 @@ export default function InterviewSetup() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [savedOffers, offerSearch, offerSort, pinMap])
 
+  // ── Smart default de dificultad (FASE 4) ─────────────────────────────────
+  /**
+   * Cuando el usuario selecciona una oferta guardada, inferimos el nivel apropiado
+   * contando cuántos topics son Tier 1 (críticos):
+   *   ≥ 5 Tier-1  → Senior  (stack exigente, muchos requisitos core)
+   *   3-4 Tier-1  → Mid     (stack balanceado)
+   *   < 3 Tier-1  → Junior  (stack pequeño o mayoritariamente nice-to-have)
+   *
+   * El hint ⚡ en Paso 2 informa al usuario que el nivel fue sugerido.
+   * Si el usuario elige manualmente otra opción, setDifficultyAutoSet(false) apaga el hint.
+   *
+   * Solo se ejecuta cuando cambia selectedId, no cuando cambia savedOffers,
+   * para no resetear la elección manual en cada re-render.
+   */
+  useEffect(() => {
+    const savedOffer = savedOffers.find(o => o.id === selectedId)
+    if (!savedOffer?.topics) { setDifficultyAutoSet(false); return }
+
+    const tier1Count = savedOffer.topics.filter(tp => tp.tier === 1).length
+    const suggested  = tier1Count >= 5 ? 'senior' : tier1Count >= 3 ? 'mixed' : 'basic'
+
+    setDifficulty(suggested)
+    setDifficultyAutoSet(true)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId])  // Intencional: solo reacciona a cambio de oferta seleccionada
+
   // ── Edición inline de nombre ─────────────────────────────────────────────
   /** Inicia la edición de nombre para una oferta */
   function startEdit(offer, e) {
@@ -847,6 +948,24 @@ export default function InterviewSetup() {
     if (saved?.id) setSelectedId(saved.id)
   }
 
+  // ── Label del perfil activo para el resumen (Paso 3) ─────────────────────
+  /**
+   * Devuelve un string legible del perfil seleccionado para mostrar en el resumen.
+   * preset fijo → "icono + nombre" | oferta guardada → nombre | custom → "Personalizada (N)"
+   */
+  function getActiveProfileLabel() {
+    const fixed = FIXED_PRESETS.find(p => p.id === selectedId)
+    if (fixed) return `${fixed.icon} ${fixed.label}`
+
+    const saved = savedOffers.find(o => o.id === selectedId)
+    if (saved) return saved.name
+
+    if (selectedId === 'custom') {
+      return `${t('interview.customLabel')}${customTopics.length > 0 ? ` (${customTopics.length})` : ''}`
+    }
+    return '—'
+  }
+
   // ── Helpers de estilo de tarjetas ─────────────────────────────────────────
   const CARD = (selected) => ({
     padding: '11px 14px',
@@ -866,12 +985,12 @@ export default function InterviewSetup() {
 
       <main className="forge-main forge-main-md">
 
-        {/* Título */}
-        <div style={{ marginBottom: 28 }}>
+        {/* Título de página */}
+        <div style={{ marginBottom: 20 }}>
           <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 6 }}>
             {t('interview.configureLabel')}
           </div>
-          <h1 style={{ fontFamily: 'Syne, sans-serif', fontWeight: 800, fontSize: 28, color: 'var(--text)', margin: '0 0 6px' }}>
+          <h1 style={{ fontFamily: 'Syne, sans-serif', fontWeight: 800, fontSize: 28, color: 'var(--text)', margin: '0 0 4px' }}>
             {t('interview.configureTitle')}
           </h1>
           <p style={{ fontFamily: 'Space Mono, monospace', fontSize: 11, color: 'var(--subtle)', lineHeight: 1.7, margin: 0 }}>
@@ -879,450 +998,536 @@ export default function InterviewSetup() {
           </p>
         </div>
 
-        {/* ── Duración ── */}
-        <Divider>{t('interview.durationLabel')}</Divider>
-        <div className="forge-grid-3" style={{ marginBottom: 4 }}>
-          {DURATIONS.map(d => (
-            <div key={d.value} onClick={() => setDuration(d.value)}
-              style={{ padding: '12px 10px', background: 'var(--surface)', border: `2px solid ${duration === d.value ? 'var(--primary)' : 'var(--border)'}`, cursor: 'pointer', transition: 'border-color 0.15s', textAlign: 'center' }}
-            >
-              <div style={{ fontFamily: 'Syne, sans-serif', fontWeight: 800, fontSize: 20, color: duration === d.value ? 'var(--primary)' : 'var(--text)', marginBottom: 3 }}>{t(d.labelKey)}</div>
-              <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)' }}>{t(d.descKey)}</div>
+        {/* ── Barra de progreso de pasos ─────────────────────────────────────────
+            Muestra en qué paso está el usuario y cuáles ya completó.
+            StepBar recibe los labels ya traducidos para soportar i18n. */}
+        <StepBar
+          step={step}
+          labels={[t('interview.step1Label'), t('interview.step2Label'), t('interview.step3Label')]}
+        />
+
+        {/* ═══════════════════════════════════════════════════════════════════
+            PASO 1 — Selección de perfil
+            Contiene: presets fijos + ofertas guardadas + custom
+            Navegación: Siguiente → solo habilitado cuando hay topics seleccionados
+        ═══════════════════════════════════════════════════════════════════ */}
+        {step === 1 && (
+          <div key="step1" style={{ animation: 'stepIn 0.2s ease' }}>
+
+            {/* ─── SECCIÓN A: Ofertas rápidas (presets fijos) ─── */}
+            <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--subtle)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 }}>
+              {t('interview.quickOffers')}
             </div>
-          ))}
-        </div>
-
-        {/* ── Nivel ── */}
-        <Divider>{t('interview.difficultyLabel')}</Divider>
-        <div className="forge-grid-3">
-          {DIFFICULTIES.map(d => (
-            <div key={d.value} onClick={() => setDifficulty(d.value)}
-              style={{ padding: '12px 10px', background: 'var(--surface)', border: `2px solid ${difficulty === d.value ? d.color : 'var(--border)'}`, cursor: 'pointer', transition: 'border-color 0.15s', textAlign: 'center' }}
-            >
-              <div style={{ fontFamily: 'Syne, sans-serif', fontWeight: 800, fontSize: 15, color: difficulty === d.value ? d.color : 'var(--text)', marginBottom: 3 }}>{t(d.labelKey)}</div>
-              <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)' }}>{t(d.descKey)}</div>
-            </div>
-          ))}
-        </div>
-
-        {/* ── PERFIL DE ENTREVISTA ── */}
-        <Divider>{t('interview.profileLabel')}</Divider>
-
-        {/* ─── SECCIÓN A: Ofertas rápidas (presets fijos) ─── */}
-        <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--subtle)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 }}>
-          {t('interview.quickOffers')}
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 18 }}>
-          {FIXED_PRESETS.map(p => {
-            const sel = selectedId === p.id
-            return (
-              <div key={p.id} onClick={() => { setSelectedId(p.id); setShowAnalysis(false) }} style={CARD(sel)}>
-                <span style={{ fontSize: 20, flexShrink: 0 }}>{p.icon}</span>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: 13, color: sel ? 'var(--primary)' : 'var(--text)', marginBottom: 3 }}>{p.label}</div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
-                    {p.topicIds.map(tid => {
-                      const t = TOPICS.find(x => x.id === tid)
-                      return t ? (
-                        <span key={tid} style={{ fontFamily: 'Space Mono, monospace', fontSize: 8, padding: '1px 5px', border: `1px solid ${sel ? 'var(--primary)' : 'var(--border)'}`, color: sel ? 'var(--primary)' : 'var(--subtle)' }}>
-                          {t.icon} {t.name}
-                        </span>
-                      ) : null
-                    })}
-                  </div>
-                </div>
-                {sel && <span style={{ color: 'var(--primary)', fontSize: 12, flexShrink: 0 }}>✓</span>}
-              </div>
-            )
-          })}
-        </div>
-
-        {/* ─── SECCIÓN B: Mis ofertas guardadas ─── */}
-
-        {/* ── Header de sección: título + contador ── */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: savedOffers.length > 0 ? 8 : 10 }}>
-          <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--subtle)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-            {t('interview.savedOffers')}
-          </div>
-          <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--subtle)' }}>
-            {t('interview.savedCount', { count: savedOffers.length })}
-          </span>
-        </div>
-
-        {/* ── Toolbar: búsqueda + orden — solo visible si hay ofertas ──
-            Busca en tiempo real en nombre, summary y topics de cada oferta.
-            El sort complementa la búsqueda: dentro de los resultados filtrados,
-            se puede ordenar por fecha / nombre alfabético / tamaño del stack. */}
-        {!offersLoading && savedOffers.length > 0 && (
-          <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
-            {/* Campo de búsqueda */}
-            <input
-              type="text"
-              value={offerSearch}
-              onChange={e => setOfferSearch(e.target.value)}
-              placeholder={t('interview.searchPlaceholder')}
-              style={{
-                flex: 1, padding: '6px 10px',
-                background: 'var(--surface)', border: '1px solid var(--border)',
-                color: 'var(--text)', fontFamily: 'Space Mono, monospace', fontSize: 10,
-                outline: 'none',
-              }}
-              onFocus={e  => e.target.style.borderColor = 'var(--primary)'}
-              onBlur={e   => e.target.style.borderColor = 'var(--border)'}
-            />
-            {/* Selector de orden */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--subtle)', whiteSpace: 'nowrap' }}>
-                {t('interview.sortLabel')}
-              </span>
-              <select
-                value={offerSort}
-                onChange={e => setOfferSort(e.target.value)}
-                style={{
-                  padding: '5px 6px',
-                  background: 'var(--surface)', border: '1px solid var(--border)',
-                  color: 'var(--text)', fontFamily: 'Space Mono, monospace', fontSize: 10,
-                  cursor: 'pointer', outline: 'none',
-                }}
-              >
-                <option value="date">{t('interview.sortDate')}</option>
-                <option value="name">{t('interview.sortName')}</option>
-                <option value="stack">{t('interview.sortStack')}</option>
-              </select>
-            </div>
-          </div>
-        )}
-
-        {/* ── Lista de ofertas ── */}
-        {offersLoading ? (
-          <div style={{ padding: '12px 14px', background: 'var(--card)', border: '1px dashed var(--border)', fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)', textAlign: 'center', marginBottom: 10 }}>
-            {t('interview.loadingOffers')}
-          </div>
-
-        ) : savedOffers.length === 0 ? (
-          <div style={{ padding: '12px 14px', background: 'var(--card)', border: '1px dashed var(--border)', fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)', textAlign: 'center', marginBottom: 10 }}>
-            {t('interview.noSavedOffers')}
-          </div>
-
-        ) : displayedOffers.length === 0 ? (
-          /* Sin resultados de búsqueda — mensaje claro con la query usada */
-          <div style={{ padding: '12px 14px', background: 'var(--card)', border: '1px dashed var(--border)', fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)', textAlign: 'center', marginBottom: 10 }}>
-            {t('interview.noSearchResults', { query: offerSearch })}
-          </div>
-
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
-            {displayedOffers.map(offer => {
-              const sel      = selectedId === offer.id
-              const pinned   = isPinned(offer.id)
-              const status   = getStatus(offer.id)
-              const useCount = interviewCountByOffer[offer.id] ?? 0
-              const covered  = (offer.topics || []).filter(tp => TOPICS.some(x => x.id === tp.id))
-              const isEditing = editingOfferId === offer.id
-              const isConfirmingDelete = confirmDeleteId === offer.id
-
-              // Mapa de colores por estado — verde/ámbar/azul/rojo
-              const STATUS_COLORS = {
-                active:      { color: 'var(--green)',   bg: 'color-mix(in srgb, var(--green) 10%, transparent)'   },
-                applied:     { color: 'var(--primary)', bg: 'color-mix(in srgb, var(--primary) 10%, transparent)' },
-                in_progress: { color: '#60a5fa',        bg: 'rgba(96,165,250,0.1)'                                },
-                discarded:   { color: 'var(--red)',     bg: 'color-mix(in srgb, var(--red) 10%, transparent)'     },
-              }
-              const statusStyle = STATUS_COLORS[status] || STATUS_COLORS.active
-
-              return (
-                <div
-                  key={offer.id}
-                  onClick={() => {
-                    if (isEditing || isConfirmingDelete) return  // no seleccionar mientras se edita/confirma
-                    setSelectedId(offer.id)
-                    setShowAnalysis(false)
-                  }}
-                  style={{
-                    ...CARD(sel),
-                    position: 'relative',
-                    // Las fijadas tienen borde izquierdo dorado como indicador visual
-                    borderLeft: pinned ? '3px solid var(--primary)' : `2px solid ${sel ? 'var(--primary)' : 'var(--border)'}`,
-                    flexDirection: 'column',
-                    alignItems: 'stretch',
-                    gap: 0,
-                    padding: 0,
-                  }}
-                >
-                  {/* ── Fila principal de la card ── */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px' }}>
-                    {/* Ícono + pin indicator */}
-                    <span style={{ fontSize: 16, flexShrink: 0, opacity: pinned ? 1 : 0.6 }}>
-                      {pinned ? '📌' : '📋'}
-                    </span>
-
-                    {/* Contenido central — nombre (editable) + summary + stats */}
-                    <div style={{ flex: 1, minWidth: 0 }}>
-
-                      {/* Nombre — inline edit o texto estático */}
-                      {isEditing ? (
-                        <form onSubmit={commitEdit} style={{ display: 'flex', gap: 4, marginBottom: 2 }}>
-                          <input
-                            autoFocus
-                            type="text"
-                            value={editingName}
-                            onChange={e => setEditingName(e.target.value)}
-                            onKeyDown={e => e.key === 'Escape' && cancelEdit()}
-                            placeholder={t('interview.editNamePlaceholder')}
-                            onClick={e => e.stopPropagation()}
-                            style={{
-                              flex: 1, padding: '3px 6px',
-                              background: 'var(--bg)', border: '1px solid var(--primary)',
-                              color: 'var(--text)', fontFamily: 'Syne, sans-serif',
-                              fontWeight: 700, fontSize: 12, outline: 'none',
-                            }}
-                          />
-                          <button type="submit" onClick={e => e.stopPropagation()}
-                            style={{ padding: '3px 7px', background: 'var(--primary)', border: 'none', color: 'var(--bg)', cursor: 'pointer', fontSize: 10, fontWeight: 700 }}>
-                            ✓
-                          </button>
-                          <button type="button" onClick={e => { e.stopPropagation(); cancelEdit() }}
-                            style={{ padding: '3px 7px', background: 'var(--card)', border: '1px solid var(--border)', color: 'var(--subtle)', cursor: 'pointer', fontSize: 10 }}>
-                            ✕
-                          </button>
-                        </form>
-                      ) : (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
-                          <div style={{ fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: 13, color: sel ? 'var(--primary)' : 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
-                            {offer.name}
-                          </div>
-                          {/* Badge de estado — clickeable para cambiar */}
-                          <select
-                            value={status}
-                            onClick={e => e.stopPropagation()}
-                            onChange={e => { e.stopPropagation(); setStatus(offer.id, e.target.value) }}
-                            style={{
-                              padding: '1px 4px', border: 'none',
-                              background: statusStyle.bg, color: statusStyle.color,
-                              fontFamily: 'Space Mono, monospace', fontSize: 8, fontWeight: 700,
-                              cursor: 'pointer', flexShrink: 0, outline: 'none',
-                            }}
-                          >
-                            <option value="active">{t('interview.statusActive')}</option>
-                            <option value="applied">{t('interview.statusApplied')}</option>
-                            <option value="in_progress">{t('interview.statusInProgress')}</option>
-                            <option value="discarded">{t('interview.statusDiscarded')}</option>
-                          </select>
-                        </div>
-                      )}
-
-                      {/* Summary — truncado */}
-                      {!isEditing && (
-                        <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--subtle)', marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {offer.summary}
-                        </div>
-                      )}
-
-                      {/* Stats: cobertura + fecha + uso en entrevistas */}
-                      {!isEditing && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                          <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 8, color: covered.length > 0 ? 'var(--primary)' : 'var(--subtle)' }}>
-                            {t('interview.skillsInDevForge', { covered: covered.length, total: offer.topics?.length || 0 })}
-                          </span>
-                          <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 8, color: 'var(--subtle)' }}>
-                            {new Date(offer.savedAt).toLocaleDateString(undefined, { day: '2-digit', month: 'short' })}
-                          </span>
-                          {/* Contador de entrevistas simuladas con esta oferta */}
-                          <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 8, color: useCount > 0 ? 'var(--green)' : 'var(--muted)' }}>
-                            {t('interview.usedInInterviews', { count: useCount })}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* ── Acciones: checkmark selección + pin + editar + borrar ── */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
-                      {sel && !isEditing && (
-                        <span style={{ color: 'var(--primary)', fontSize: 12, marginRight: 4 }}>✓</span>
-                      )}
-
-                      {/* Botón fijar/desfijar — flota la oferta al tope de la lista */}
-                      <button
-                        onClick={e => { e.stopPropagation(); togglePin(offer.id) }}
-                        title={pinned ? t('interview.unpinOffer') : t('interview.pinOffer')}
-                        style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, padding: '2px 3px', color: pinned ? 'var(--primary)' : 'var(--subtle)', lineHeight: 1 }}
-                        onMouseEnter={e => e.currentTarget.style.color = 'var(--primary)'}
-                        onMouseLeave={e => e.currentTarget.style.color = pinned ? 'var(--primary)' : 'var(--subtle)'}
-                      >
-                        {pinned ? '📌' : '📍'}
-                      </button>
-
-                      {/* Botón editar nombre inline */}
-                      <button
-                        onClick={e => startEdit(offer, e)}
-                        title={t('interview.editName')}
-                        style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, padding: '2px 3px', color: 'var(--subtle)', lineHeight: 1 }}
-                        onMouseEnter={e => e.currentTarget.style.color = 'var(--text)'}
-                        onMouseLeave={e => e.currentTarget.style.color = 'var(--subtle)'}
-                      >
-                        ✏️
-                      </button>
-
-                      {/* Botón eliminar — muestra confirmación inline antes de borrar */}
-                      <button
-                        onClick={e => { e.stopPropagation(); setConfirmDeleteId(offer.id) }}
-                        title={t('interview.confirmDelete')}
-                        style={{ background: 'none', border: 'none', color: 'var(--subtle)', cursor: 'pointer', fontSize: 11, padding: '2px 3px', lineHeight: 1 }}
-                        onMouseEnter={e => e.currentTarget.style.color = 'var(--red)'}
-                        onMouseLeave={e => e.currentTarget.style.color = 'var(--subtle)'}
-                      >
-                        🗑
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* ── Confirmación de borrado — aparece debajo de la card ──
-                      Inline en lugar de modal: menos disruptivo, mismo contexto visual.
-                      Si el usuario confirma, limpiamos también los metadatos (pin/status)
-                      para no dejar entradas huérfanas en localStorage. */}
-                  {isConfirmingDelete && (
-                    <div
-                      onClick={e => e.stopPropagation()}
-                      style={{
-                        borderTop: '1px solid var(--border)', padding: '8px 12px',
-                        background: 'color-mix(in srgb, var(--red) 6%, var(--surface))',
-                        display: 'flex', alignItems: 'center', gap: 8,
-                      }}
-                    >
-                      <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--red)', flex: 1 }}>
-                        {t('interview.confirmDelete')}
-                      </span>
-                      <button
-                        onClick={e => {
-                          e.stopPropagation()
-                          if (sel) setSelectedId('fullstack')  // fallback si se borra la seleccionada
-                          cleanMeta(offer.id)                  // limpia pin + status del localStorage
-                          deleteOffer(offer.id)
-                          setConfirmDeleteId(null)
-                        }}
-                        style={{ padding: '4px 10px', background: 'var(--red)', border: 'none', color: '#fff', cursor: 'pointer', fontFamily: 'Space Mono, monospace', fontSize: 9, fontWeight: 700 }}
-                      >
-                        {t('interview.confirmDeleteYes')}
-                      </button>
-                      <button
-                        onClick={e => { e.stopPropagation(); setConfirmDeleteId(null) }}
-                        style={{ padding: '4px 10px', background: 'var(--card)', border: '1px solid var(--border)', color: 'var(--subtle)', cursor: 'pointer', fontFamily: 'Space Mono, monospace', fontSize: 9 }}
-                      >
-                        {t('interview.confirmDeleteNo')}
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        )}
-
-        {/* Botón analizar nueva oferta */}
-        <button
-          onClick={() => { setShowAnalysis(s => !s); setSelectedId('') }}
-          style={{ width: '100%', padding: '10px 0', background: showAnalysis ? 'var(--surface)' : 'var(--card)', border: `1px solid ${showAnalysis ? 'var(--primary)' : 'var(--border)'}`, color: showAnalysis ? 'var(--primary)' : 'var(--subtle)', cursor: 'pointer', fontFamily: 'Space Mono, monospace', fontSize: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, transition: 'all 0.15s', marginBottom: 18 }}
-        >
-          <span style={{ fontSize: 14 }}>📎</span>
-          {showAnalysis ? t('interview.closeAnalysis') : t('interview.analyzeNew')}
-          <span style={{ padding: '1px 5px', background: 'var(--primary)', color: '#000', fontFamily: 'Space Mono, monospace', fontSize: 8, fontWeight: 700 }}>IA</span>
-        </button>
-
-        {/* Panel de análisis */}
-        {showAnalysis && (
-          <OfferAnalysisPanel
-            onSave={handleOfferSaved}
-            onCancel={() => setShowAnalysis(false)}
-          />
-        )}
-
-        {/* ─── SECCIÓN C: Personalizada ─── */}
-        <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--subtle)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8, marginTop: savedOffers.length > 0 ? 0 : 4 }}>
-          {t('interview.customMode')}
-        </div>
-        <div onClick={() => { setSelectedId('custom'); setShowAnalysis(false) }} style={CARD(selectedId === 'custom')}>
-          <span style={{ fontSize: 20, flexShrink: 0 }}>⚙️</span>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: 13, color: selectedId === 'custom' ? 'var(--primary)' : 'var(--text)', marginBottom: 3 }}>
-              {t('interview.customLabel')}
-            </div>
-            <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)' }}>
-              {selectedId === 'custom' && customTopics.length > 0
-                ? t('interview.customTopicsSelected', { count: customTopics.length })
-                : t('interview.customDesc')
-              }
-            </div>
-          </div>
-          {selectedId === 'custom' && <span style={{ color: 'var(--primary)', fontSize: 12, flexShrink: 0 }}>✓</span>}
-        </div>
-
-        {/* Topic picker custom */}
-        {selectedId === 'custom' && (
-          <div style={{ marginTop: 12 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(172px, 1fr))', gap: 5 }}>
-              {TOPICS.map(t => {
-                const sel = customTopics.includes(t.id)
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 18 }}>
+              {FIXED_PRESETS.map(p => {
+                const sel = selectedId === p.id
                 return (
-                  <div key={t.id} onClick={() => toggleCustomTopic(t.id)}
-                    style={{ padding: '7px 11px', background: sel ? 'var(--surface)' : 'var(--card)', border: `1px solid ${sel ? 'var(--primary)' : 'var(--border)'}`, cursor: 'pointer', transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: 7 }}
-                  >
-                    <span style={{ fontSize: 13 }}>{t.icon}</span>
+                  <div key={p.id} onClick={() => { setSelectedId(p.id); setShowAnalysis(false) }} style={CARD(sel)}>
+                    <span style={{ fontSize: 20, flexShrink: 0 }}>{p.icon}</span>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: 11, color: sel ? 'var(--primary)' : 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</div>
-                      <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 8, color: 'var(--subtle)' }}>Tier {t.tier}</div>
+                      <div style={{ fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: 13, color: sel ? 'var(--primary)' : 'var(--text)', marginBottom: 3 }}>{p.label}</div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+                        {p.topicIds.map(tid => {
+                          const tp = TOPICS.find(x => x.id === tid)
+                          return tp ? (
+                            <span key={tid} style={{ fontFamily: 'Space Mono, monospace', fontSize: 8, padding: '1px 5px', border: `1px solid ${sel ? 'var(--primary)' : 'var(--border)'}`, color: sel ? 'var(--primary)' : 'var(--subtle)' }}>
+                              {tp.icon} {tp.name}
+                            </span>
+                          ) : null
+                        })}
+                      </div>
                     </div>
-                    {sel && <span style={{ color: 'var(--primary)', fontSize: 10, flexShrink: 0 }}>✓</span>}
+                    {sel && <span style={{ color: 'var(--primary)', fontSize: 12, flexShrink: 0 }}>✓</span>}
                   </div>
                 )
               })}
             </div>
+
+            {/* ─── SECCIÓN B: Mis ofertas guardadas ─── */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: savedOffers.length > 0 ? 8 : 10 }}>
+              <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--subtle)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                {t('interview.savedOffers')}
+              </div>
+              <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--subtle)' }}>
+                {t('interview.savedCount', { count: savedOffers.length })}
+              </span>
+            </div>
+
+            {/* Toolbar: búsqueda + orden — solo si hay ofertas */}
+            {!offersLoading && savedOffers.length > 0 && (
+              <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+                <input
+                  type="text"
+                  value={offerSearch}
+                  onChange={e => setOfferSearch(e.target.value)}
+                  placeholder={t('interview.searchPlaceholder')}
+                  style={{ flex: 1, padding: '6px 10px', background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text)', fontFamily: 'Space Mono, monospace', fontSize: 10, outline: 'none' }}
+                  onFocus={e => e.target.style.borderColor = 'var(--primary)'}
+                  onBlur={e  => e.target.style.borderColor = 'var(--border)'}
+                />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--subtle)', whiteSpace: 'nowrap' }}>
+                    {t('interview.sortLabel')}
+                  </span>
+                  <select
+                    value={offerSort}
+                    onChange={e => setOfferSort(e.target.value)}
+                    style={{ padding: '5px 6px', background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text)', fontFamily: 'Space Mono, monospace', fontSize: 10, cursor: 'pointer', outline: 'none' }}
+                  >
+                    <option value="date">{t('interview.sortDate')}</option>
+                    <option value="name">{t('interview.sortName')}</option>
+                    <option value="stack">{t('interview.sortStack')}</option>
+                  </select>
+                </div>
+              </div>
+            )}
+
+            {/* Lista de ofertas guardadas */}
+            {offersLoading ? (
+              <div style={{ padding: '12px 14px', background: 'var(--card)', border: '1px dashed var(--border)', fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)', textAlign: 'center', marginBottom: 10 }}>
+                {t('interview.loadingOffers')}
+              </div>
+
+            ) : savedOffers.length === 0 ? (
+              <div style={{ padding: '12px 14px', background: 'var(--card)', border: '1px dashed var(--border)', fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)', textAlign: 'center', marginBottom: 10 }}>
+                {t('interview.noSavedOffers')}
+              </div>
+
+            ) : displayedOffers.length === 0 ? (
+              <div style={{ padding: '12px 14px', background: 'var(--card)', border: '1px dashed var(--border)', fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)', textAlign: 'center', marginBottom: 10 }}>
+                {t('interview.noSearchResults', { query: offerSearch })}
+              </div>
+
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
+                {displayedOffers.map(offer => {
+                  const sel      = selectedId === offer.id
+                  const pinned   = isPinned(offer.id)
+                  const status   = getStatus(offer.id)
+                  const useCount = interviewCountByOffer[offer.id] ?? 0
+                  const covered  = (offer.topics || []).filter(tp => TOPICS.some(x => x.id === tp.id))
+                  const isEditing          = editingOfferId  === offer.id
+                  const isConfirmingDelete = confirmDeleteId === offer.id
+
+                  // Paleta de colores por estado de la oferta
+                  const STATUS_COLORS = {
+                    active:      { color: 'var(--green)',   bg: 'color-mix(in srgb, var(--green) 10%, transparent)'   },
+                    applied:     { color: 'var(--primary)', bg: 'color-mix(in srgb, var(--primary) 10%, transparent)' },
+                    in_progress: { color: '#60a5fa',        bg: 'rgba(96,165,250,0.1)'                                },
+                    discarded:   { color: 'var(--red)',     bg: 'color-mix(in srgb, var(--red) 10%, transparent)'     },
+                  }
+                  const statusStyle = STATUS_COLORS[status] || STATUS_COLORS.active
+
+                  return (
+                    <div
+                      key={offer.id}
+                      onClick={() => {
+                        // No seleccionar mientras hay una acción inline en progreso
+                        if (isEditing || isConfirmingDelete) return
+                        setSelectedId(offer.id)
+                        setShowAnalysis(false)
+                      }}
+                      style={{
+                        ...CARD(sel),
+                        position: 'relative',
+                        // Borde izquierdo dorado indica que la oferta está fijada (pin)
+                        borderLeft: pinned ? '3px solid var(--primary)' : `2px solid ${sel ? 'var(--primary)' : 'var(--border)'}`,
+                        flexDirection: 'column',
+                        alignItems: 'stretch',
+                        gap: 0,
+                        padding: 0,
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px' }}>
+                        <span style={{ fontSize: 16, flexShrink: 0, opacity: pinned ? 1 : 0.6 }}>
+                          {pinned ? '📌' : '📋'}
+                        </span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          {isEditing ? (
+                            <form onSubmit={commitEdit} style={{ display: 'flex', gap: 4, marginBottom: 2 }}>
+                              <input
+                                autoFocus
+                                type="text"
+                                value={editingName}
+                                onChange={e => setEditingName(e.target.value)}
+                                onKeyDown={e => e.key === 'Escape' && cancelEdit()}
+                                placeholder={t('interview.editNamePlaceholder')}
+                                onClick={e => e.stopPropagation()}
+                                style={{ flex: 1, padding: '3px 6px', background: 'var(--bg)', border: '1px solid var(--primary)', color: 'var(--text)', fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: 12, outline: 'none' }}
+                              />
+                              <button type="submit" onClick={e => e.stopPropagation()}
+                                style={{ padding: '3px 7px', background: 'var(--primary)', border: 'none', color: 'var(--bg)', cursor: 'pointer', fontSize: 10, fontWeight: 700 }}>
+                                ✓
+                              </button>
+                              <button type="button" onClick={e => { e.stopPropagation(); cancelEdit() }}
+                                style={{ padding: '3px 7px', background: 'var(--card)', border: '1px solid var(--border)', color: 'var(--subtle)', cursor: 'pointer', fontSize: 10 }}>
+                                ✕
+                              </button>
+                            </form>
+                          ) : (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                              <div style={{ fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: 13, color: sel ? 'var(--primary)' : 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                                {offer.name}
+                              </div>
+                              {/* Badge de estado con dropdown colorizado */}
+                              <select
+                                value={status}
+                                onClick={e => e.stopPropagation()}
+                                onChange={e => { e.stopPropagation(); setStatus(offer.id, e.target.value) }}
+                                style={{ padding: '1px 4px', border: 'none', background: statusStyle.bg, color: statusStyle.color, fontFamily: 'Space Mono, monospace', fontSize: 8, fontWeight: 700, cursor: 'pointer', flexShrink: 0, outline: 'none' }}
+                              >
+                                <option value="active">{t('interview.statusActive')}</option>
+                                <option value="applied">{t('interview.statusApplied')}</option>
+                                <option value="in_progress">{t('interview.statusInProgress')}</option>
+                                <option value="discarded">{t('interview.statusDiscarded')}</option>
+                              </select>
+                            </div>
+                          )}
+                          {!isEditing && (
+                            <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--subtle)', marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {offer.summary}
+                            </div>
+                          )}
+                          {!isEditing && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                              <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 8, color: covered.length > 0 ? 'var(--primary)' : 'var(--subtle)' }}>
+                                {t('interview.skillsInDevForge', { covered: covered.length, total: offer.topics?.length || 0 })}
+                              </span>
+                              <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 8, color: 'var(--subtle)' }}>
+                                {new Date(offer.savedAt).toLocaleDateString(undefined, { day: '2-digit', month: 'short' })}
+                              </span>
+                              <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 8, color: useCount > 0 ? 'var(--green)' : 'var(--muted)' }}>
+                                {t('interview.usedInInterviews', { count: useCount })}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                        {/* Acciones: pin + editar + borrar */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
+                          {sel && !isEditing && (
+                            <span style={{ color: 'var(--primary)', fontSize: 12, marginRight: 4 }}>✓</span>
+                          )}
+                          <button
+                            onClick={e => { e.stopPropagation(); togglePin(offer.id) }}
+                            title={pinned ? t('interview.unpinOffer') : t('interview.pinOffer')}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, padding: '2px 3px', color: pinned ? 'var(--primary)' : 'var(--subtle)', lineHeight: 1 }}
+                            onMouseEnter={e => e.currentTarget.style.color = 'var(--primary)'}
+                            onMouseLeave={e => e.currentTarget.style.color = pinned ? 'var(--primary)' : 'var(--subtle)'}
+                          >
+                            {pinned ? '📌' : '📍'}
+                          </button>
+                          <button
+                            onClick={e => startEdit(offer, e)}
+                            title={t('interview.editName')}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, padding: '2px 3px', color: 'var(--subtle)', lineHeight: 1 }}
+                            onMouseEnter={e => e.currentTarget.style.color = 'var(--text)'}
+                            onMouseLeave={e => e.currentTarget.style.color = 'var(--subtle)'}
+                          >
+                            ✏️
+                          </button>
+                          <button
+                            onClick={e => { e.stopPropagation(); setConfirmDeleteId(offer.id) }}
+                            title={t('interview.confirmDelete')}
+                            style={{ background: 'none', border: 'none', color: 'var(--subtle)', cursor: 'pointer', fontSize: 11, padding: '2px 3px', lineHeight: 1 }}
+                            onMouseEnter={e => e.currentTarget.style.color = 'var(--red)'}
+                            onMouseLeave={e => e.currentTarget.style.color = 'var(--subtle)'}
+                          >
+                            🗑
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Confirmación de borrado inline — no modal.
+                          limpia metadatos huérfanos de localStorage al confirmar. */}
+                      {isConfirmingDelete && (
+                        <div
+                          onClick={e => e.stopPropagation()}
+                          style={{ borderTop: '1px solid var(--border)', padding: '8px 12px', background: 'color-mix(in srgb, var(--red) 6%, var(--surface))', display: 'flex', alignItems: 'center', gap: 8 }}
+                        >
+                          <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--red)', flex: 1 }}>
+                            {t('interview.confirmDelete')}
+                          </span>
+                          <button
+                            onClick={e => {
+                              e.stopPropagation()
+                              if (sel) setSelectedId('fullstack')
+                              cleanMeta(offer.id)   // elimina pin + status huérfanos
+                              deleteOffer(offer.id)
+                              setConfirmDeleteId(null)
+                            }}
+                            style={{ padding: '4px 10px', background: 'var(--red)', border: 'none', color: '#fff', cursor: 'pointer', fontFamily: 'Space Mono, monospace', fontSize: 9, fontWeight: 700 }}
+                          >
+                            {t('interview.confirmDeleteYes')}
+                          </button>
+                          <button
+                            onClick={e => { e.stopPropagation(); setConfirmDeleteId(null) }}
+                            style={{ padding: '4px 10px', background: 'var(--card)', border: '1px solid var(--border)', color: 'var(--subtle)', cursor: 'pointer', fontFamily: 'Space Mono, monospace', fontSize: 9 }}
+                          >
+                            {t('interview.confirmDeleteNo')}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
+            {/* Botón analizar nueva oferta con IA */}
+            <button
+              onClick={() => { setShowAnalysis(s => !s); setSelectedId('') }}
+              style={{ width: '100%', padding: '10px 0', background: showAnalysis ? 'var(--surface)' : 'var(--card)', border: `1px solid ${showAnalysis ? 'var(--primary)' : 'var(--border)'}`, color: showAnalysis ? 'var(--primary)' : 'var(--subtle)', cursor: 'pointer', fontFamily: 'Space Mono, monospace', fontSize: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, transition: 'all 0.15s', marginBottom: showAnalysis ? 0 : 16 }}
+            >
+              <span style={{ fontSize: 14 }}>📎</span>
+              {showAnalysis ? t('interview.closeAnalysis') : t('interview.analyzeNew')}
+              <span style={{ padding: '1px 5px', background: 'var(--primary)', color: '#000', fontFamily: 'Space Mono, monospace', fontSize: 8, fontWeight: 700 }}>IA</span>
+            </button>
+
+            {showAnalysis && (
+              <OfferAnalysisPanel
+                onSave={handleOfferSaved}
+                onCancel={() => setShowAnalysis(false)}
+              />
+            )}
+
+            {/* ─── SECCIÓN C: Personalizada ─── */}
+            <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--subtle)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8, marginTop: showAnalysis ? 14 : 16 }}>
+              {t('interview.customMode')}
+            </div>
+            <div onClick={() => { setSelectedId('custom'); setShowAnalysis(false) }} style={CARD(selectedId === 'custom')}>
+              <span style={{ fontSize: 20, flexShrink: 0 }}>⚙️</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: 13, color: selectedId === 'custom' ? 'var(--primary)' : 'var(--text)', marginBottom: 3 }}>
+                  {t('interview.customLabel')}
+                </div>
+                <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)' }}>
+                  {selectedId === 'custom' && customTopics.length > 0
+                    ? t('interview.customTopicsSelected', { count: customTopics.length })
+                    : t('interview.customDesc')
+                  }
+                </div>
+              </div>
+              {selectedId === 'custom' && <span style={{ color: 'var(--primary)', fontSize: 12, flexShrink: 0 }}>✓</span>}
+            </div>
+
+            {/* Topic picker custom */}
+            {selectedId === 'custom' && (
+              <div style={{ marginTop: 12 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(172px, 1fr))', gap: 5 }}>
+                  {TOPICS.map(tp => {
+                    const sel = customTopics.includes(tp.id)
+                    return (
+                      <div key={tp.id} onClick={() => toggleCustomTopic(tp.id)}
+                        style={{ padding: '7px 11px', background: sel ? 'var(--surface)' : 'var(--card)', border: `1px solid ${sel ? 'var(--primary)' : 'var(--border)'}`, cursor: 'pointer', transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: 7 }}
+                      >
+                        <span style={{ fontSize: 13 }}>{tp.icon}</span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: 11, color: sel ? 'var(--primary)' : 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tp.name}</div>
+                          <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 8, color: 'var(--subtle)' }}>Tier {tp.tier}</div>
+                        </div>
+                        {sel && <span style={{ color: 'var(--primary)', fontSize: 10, flexShrink: 0 }}>✓</span>}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Preview de skills del perfil seleccionado */}
+            {selectedId !== 'custom' && activeTopics.length > 0 && (
+              <SkillsBreakdown topics={activeTopics} />
+            )}
+
+            {/* Aviso si la oferta no tiene topics con preguntas en DevForge */}
+            {selectedId !== 'custom' && activeTopics.length > 0 && selectedTopicIds.length === 0 && (
+              <div style={{ marginTop: 10, padding: '9px 12px', background: 'color-mix(in srgb, var(--primary) 6%, transparent)', border: '1px solid var(--primary)' }}>
+                <p style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--primary)', margin: 0, lineHeight: 1.6 }}>
+                  {t('interview.step3NoTopics')}
+                </p>
+              </div>
+            )}
+
+            {/* Botón Siguiente → Paso 2.
+                Deshabilitado si no hay topics con preguntas para evitar un Paso 3 inútil. */}
+            <div style={{ marginTop: 24 }}>
+              <button
+                onClick={() => setStep(2)}
+                disabled={!selectedTopicIds.length}
+                style={{ width: '100%', padding: '13px 0', background: selectedTopicIds.length ? 'var(--primary)' : 'var(--muted)', border: 'none', color: '#000', cursor: selectedTopicIds.length ? 'pointer' : 'default', fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: 14 }}
+              >
+                {t('interview.nextStep')}
+              </button>
+            </div>
+
           </div>
         )}
 
-        {/* ─── Skills del perfil seleccionado ─── */}
-        {selectedId !== 'custom' && activeTopics.length > 0 && (
-          <SkillsBreakdown topics={activeTopics} />
-        )}
+        {/* ═══════════════════════════════════════════════════════════════════
+            PASO 2 — Configuración de la sesión
+            Duración + nivel de dificultad + hint de smart default + skills preview
+        ═══════════════════════════════════════════════════════════════════ */}
+        {step === 2 && (
+          <div key="step2" style={{ animation: 'stepIn 0.2s ease' }}>
 
-        {/* Aviso si ai offer no tiene topics con preguntas */}
-        {selectedId !== 'custom' && activeTopics.length > 0 && selectedTopicIds.length === 0 && (
-          <div style={{ marginTop: 10, padding: '9px 12px', background: 'color-mix(in srgb, var(--primary) 6%, transparent)', border: '1px solid var(--primary)' }}>
-            <p style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--primary)', margin: 0, lineHeight: 1.6 }}>
-              ℹ Las skills de esta oferta aún no tienen preguntas en DevForge. Probá con "Personalizada".
-            </p>
+            <Divider>{t('interview.durationLabel')}</Divider>
+            <div className="forge-grid-3" style={{ marginBottom: 4 }}>
+              {DURATIONS.map(d => (
+                <div key={d.value} onClick={() => setDuration(d.value)}
+                  style={{ padding: '12px 10px', background: 'var(--surface)', border: `2px solid ${duration === d.value ? 'var(--primary)' : 'var(--border)'}`, cursor: 'pointer', transition: 'border-color 0.15s', textAlign: 'center' }}
+                >
+                  <div style={{ fontFamily: 'Syne, sans-serif', fontWeight: 800, fontSize: 20, color: duration === d.value ? 'var(--primary)' : 'var(--text)', marginBottom: 3 }}>{t(d.labelKey)}</div>
+                  <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)' }}>{t(d.descKey)}</div>
+                </div>
+              ))}
+            </div>
+
+            <Divider>{t('interview.difficultyLabel')}</Divider>
+
+            {/* Hint de smart default — aparece solo cuando el nivel fue sugerido automáticamente.
+                Se apaga al instante cuando el usuario elige manualmente. */}
+            {difficultyAutoSet && (
+              <div style={{ marginBottom: 10, padding: '7px 12px', background: 'color-mix(in srgb, var(--primary) 8%, transparent)', border: '1px solid var(--primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 13 }}>⚡</span>
+                <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--primary)' }}>
+                  {t('interview.smartDefaultHint')}
+                </span>
+              </div>
+            )}
+
+            <div className="forge-grid-3">
+              {DIFFICULTIES.map(d => (
+                <div key={d.value}
+                  onClick={() => { setDifficulty(d.value); setDifficultyAutoSet(false) }}
+                  style={{ padding: '12px 10px', background: 'var(--surface)', border: `2px solid ${difficulty === d.value ? d.color : 'var(--border)'}`, cursor: 'pointer', transition: 'border-color 0.15s', textAlign: 'center' }}
+                >
+                  <div style={{ fontFamily: 'Syne, sans-serif', fontWeight: 800, fontSize: 15, color: difficulty === d.value ? d.color : 'var(--text)', marginBottom: 3 }}>{t(d.labelKey)}</div>
+                  <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)' }}>{t(d.descKey)}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Skills breakdown — recordatorio del perfil mientras configura el nivel */}
+            {selectedId !== 'custom' && activeTopics.length > 0 && (
+              <SkillsBreakdown topics={activeTopics} />
+            )}
+
+            {/* Navegación Paso 2: Volver + Siguiente */}
+            <div style={{ display: 'flex', gap: 8, marginTop: 24 }}>
+              <button
+                onClick={() => setStep(1)}
+                style={{ flex: 1, padding: '12px 0', background: 'transparent', border: '1px solid var(--border)', color: 'var(--subtle)', cursor: 'pointer', fontFamily: 'Space Mono, monospace', fontSize: 10 }}
+              >
+                {t('interview.prevStep')}
+              </button>
+              <button
+                onClick={() => setStep(3)}
+                style={{ flex: 2, padding: '12px 0', background: 'var(--primary)', border: 'none', color: '#000', cursor: 'pointer', fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: 14 }}
+              >
+                {t('interview.nextStep')}
+              </button>
+            </div>
+
           </div>
         )}
 
-        {/* ── Resumen + CTA ── */}
-        <div style={{ marginTop: 28, background: 'var(--surface)', border: `2px solid ${selectedTopicIds.length ? 'var(--primary)' : 'var(--border)'}`, padding: '18px 22px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', rowGap: 12 }}>
-            <div>
-              <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--subtle)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 5 }}>
-                {t('interview.interviewSummary')}
+        {/* ═══════════════════════════════════════════════════════════════════
+            PASO 3 — Resumen y lanzamiento
+            Resume toda la configuración elegida. El botón "Iniciar" SOLO está aquí:
+            obliga a revisar la config completa antes de comenzar la entrevista.
+        ═══════════════════════════════════════════════════════════════════ */}
+        {step === 3 && (
+          <div key="step3" style={{ animation: 'stepIn 0.2s ease' }}>
+
+            {/* Tarjeta de resumen */}
+            <div style={{ border: '1px solid var(--border)', marginBottom: 16, background: 'var(--card)', overflow: 'hidden' }}>
+              <div style={{ padding: '11px 18px', borderBottom: '1px solid var(--border)', background: 'var(--surface)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 14 }}>✅</span>
+                <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '0.12em' }}>
+                  {t('interview.step3Ready')}
+                </div>
               </div>
-              <div style={{ fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: 15, color: 'var(--text)', marginBottom: 3 }}>
-                {duration} min · {t(DIFFICULTIES.find(d => d.value === difficulty)?.labelKey)} · ~{approxQ} {t('history.statQuestions').toLowerCase()}
-              </div>
-              <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)' }}>
-                {t('interview.rules')}
+              <div style={{ padding: '16px 18px' }}>
+                {/* Perfil */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 13, paddingBottom: 13, borderBottom: '1px solid var(--border)' }}>
+                  <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)', flexShrink: 0, marginRight: 12 }}>
+                    {t('interview.step3Profile')}
+                  </span>
+                  <span style={{ fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: 13, color: 'var(--text)', textAlign: 'right' }}>
+                    {getActiveProfileLabel()}
+                  </span>
+                </div>
+                {/* Duración */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                  <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)' }}>
+                    {t('interview.step3Duration')}
+                  </span>
+                  <span style={{ fontFamily: 'Syne, sans-serif', fontWeight: 800, fontSize: 16, color: 'var(--primary)' }}>
+                    {duration} min
+                  </span>
+                </div>
+                {/* Nivel */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                  <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)' }}>
+                    {t('interview.step3Level')}
+                  </span>
+                  <span style={{ fontFamily: 'Syne, sans-serif', fontWeight: 800, fontSize: 16, color: DIFFICULTIES.find(d => d.value === difficulty)?.color }}>
+                    {t(DIFFICULTIES.find(d => d.value === difficulty)?.labelKey)}
+                  </span>
+                </div>
+                {/* Topics / preguntas estimadas */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)' }}>
+                    {t('interview.step3Topics')}
+                  </span>
+                  <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, fontWeight: 700, color: selectedTopicIds.length ? 'var(--green)' : 'var(--red)' }}>
+                    {selectedTopicIds.length > 0
+                      ? t('interview.step3Estimated', { count: approxQ })
+                      : t('interview.step3NoTopics')}
+                  </span>
+                </div>
               </div>
             </div>
+
+            {/* Recordatorio de reglas de la entrevista */}
+            <div style={{ marginBottom: 18, fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--subtle)', textAlign: 'center', letterSpacing: '0.06em' }}>
+              {t('interview.rules')}
+            </div>
+
+            {/* Botón iniciar — protagonista del Paso 3 */}
             <button
               onClick={handleStart}
               disabled={!selectedTopicIds.length}
-              style={{ padding: '12px 28px', background: selectedTopicIds.length ? 'var(--primary)' : 'var(--muted)', border: 'none', color: '#000', cursor: selectedTopicIds.length ? 'pointer' : 'default', fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: 14, whiteSpace: 'nowrap', flexShrink: 0 }}
+              style={{ width: '100%', padding: '16px 0', background: selectedTopicIds.length ? 'var(--primary)' : 'var(--muted)', border: 'none', color: '#000', cursor: selectedTopicIds.length ? 'pointer' : 'default', fontFamily: 'Syne, sans-serif', fontWeight: 800, fontSize: 18, marginBottom: 10, letterSpacing: '0.02em' }}
             >
               {t('interview.startInterview')}
             </button>
+
+            {/* Volver al Paso 2 */}
+            <button
+              onClick={() => setStep(2)}
+              style={{ width: '100%', padding: '10px 0', background: 'transparent', border: '1px solid var(--border)', color: 'var(--subtle)', cursor: 'pointer', fontFamily: 'Space Mono, monospace', fontSize: 10 }}
+            >
+              {t('interview.prevStep')}
+            </button>
+
           </div>
-        </div>
+        )}
 
       </main>
 
       <footer className="forge-footer">
         <span>{t('history.footer')}</span>
-        <button onClick={() => navigate('/dashboard')} style={{ background: 'none', border: 'none', color: 'var(--subtle)', cursor: 'pointer', fontFamily: 'Space Mono, monospace', fontSize: 10 }}>{t('history.backDashboard')}</button>
+        <button onClick={() => navigate('/dashboard')} style={{ background: 'none', border: 'none', color: 'var(--subtle)', cursor: 'pointer', fontFamily: 'Space Mono, monospace', fontSize: 10 }}>
+          {t('history.backDashboard')}
+        </button>
       </footer>
+
+      {/* Keyframes: stepIn (transición entre pasos) + spin/slideDown (subcomponentes internos) */}
+      <style>{`
+        @keyframes stepIn    { from { opacity: 0; transform: translateX(10px) } to { opacity: 1; transform: translateX(0) } }
+        @keyframes spin      { to { transform: rotate(360deg) } }
+        @keyframes slideDown { from { opacity: 0; transform: translateY(-6px) } to { opacity: 1; transform: translateY(0) } }
+      `}</style>
     </div>
   )
 }

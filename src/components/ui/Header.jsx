@@ -3,7 +3,8 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { useStore, ACTIONS } from '../../store/index.jsx'
 import { useAuth } from '../../context/AuthContext'
 import { useTheme, useFont } from './ThemeSwitcher.jsx'
-import ResourcePanel from './ResourcePanel.jsx'
+import ResourcePanel  from './ResourcePanel.jsx'
+import CVMatcherPanel from './CVMatcherPanel.jsx'
 import { TOPICS } from '../../data/topics.js'
 import { useTranslation } from 'react-i18next'
 import i18n from '../../i18n/index.js'
@@ -309,6 +310,10 @@ export default function Header({ backTo, backLabel, rightContent }) {
   const [resourceOpen,  setResourceOpen]  = useState(false)
   const [resourceTopic, setResourceTopic] = useState(null)
 
+  // ── Estado del panel CV Matcher ────────────────────────────────────────
+  // Se cierra igual que los otros paneles: onClose → false
+  const [cvMatcherOpen, setCvMatcherOpen] = useState(false)
+
   const userName = state.user?.name
 
   // Aplica la fuente guardada en cada página que use Header
@@ -353,6 +358,11 @@ export default function Header({ backTo, backLabel, rightContent }) {
         />
       )}
 
+      {/* Panel CV Matcher — analiza compatibilidad CV vs oferta laboral */}
+      {cvMatcherOpen && (
+        <CVMatcherPanel onClose={() => setCvMatcherOpen(false)} />
+      )}
+
       <header className="forge-header">
         {/* Izquierda */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 16, minWidth: 0 }}>
@@ -379,6 +389,19 @@ export default function Header({ backTo, backLabel, rightContent }) {
         {/* Derecha */}
         <div className="forge-header-right">
           {rightContent}
+
+          {/* ── Botón CV Matcher ── */}
+          {/* Solo visible cuando el usuario ya completó el onboarding y tiene datos */}
+          <button
+            onClick={() => setCvMatcherOpen(true)}
+            title="CV Matcher — compatibilidad con la oferta"
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 11px', background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text)', cursor: 'pointer', fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: 12, transition: 'border-color 0.15s', whiteSpace: 'nowrap' }}
+            onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--primary)'}
+            onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}
+          >
+            <span>⚡</span>
+            <span className="forge-hide-sm">CV Match</span>
+          </button>
 
           {/* ── Botón Recursos ── */}
           <button

@@ -30,10 +30,12 @@
  *   onClose — callback para cerrar el panel
  */
 
-import { useState, useRef }   from 'react'
-import { useStore }            from '../../store/index.jsx'
+import { useState, useRef, useEffect } from 'react'
+import { useStore }                    from '../../store/index.jsx'
+import { useAuth }                     from '../../context/AuthContext'
+import { loadOffers }                  from '../../lib/db.js'
 import { extractTextFromFile, isFileSupported } from '../../lib/fileParser.js'
-import { useTranslation }      from 'react-i18next'
+import { useTranslation }              from 'react-i18next'
 
 // ── Constantes de Groq (mismo endpoint que useAI.js) ──────────────────────
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions'
@@ -193,9 +195,48 @@ function WeightBadge({ level }) {
   )
 }
 
+// ── buildJobText ──────────────────────────────────────────────────────────
+/**
+ * Reconstruye un texto de oferta laboral a partir de una oferta guardada.
+ *
+ * ¿Por qué reconstruir y no guardar el texto raw?
+ * La tabla saved_offers almacena nombre + resumen + topics extraídos por IA
+ * (no el texto crudo original). Con esos datos podemos construir un JD sintético
+ * que Groq puede analizar perfectamente — el modelo entiende el formato.
+ *
+ * Formato final (ejemplo):
+ *   Oferta: Startup FinTech · Senior Python
+ *   Descripción: Buscamos Python Backend Engineer con FastAPI...
+ *   Tecnologías críticas: Python, FastAPI, PostgreSQL
+ *   Tecnologías importantes: Redis, Docker
+ *   Nice to have: Kubernetes
+ *
+ * @param {Object} offer — { name, summary, topics: [{ name, tier }] }
+ * @returns {string}
+ */
+function buildJobText(offer) {
+  const byTier = (tier) => (offer.topics || [])
+    .filter(tp => tp.tier === tier)
+    .map(tp => tp.name)
+    .join(', ')
+
+  const critical  = byTier(1)
+  const important = byTier(2)
+  const nice      = byTier(3)
+
+  return [
+    `Oferta: ${offer.name}`,
+    offer.summary ? `\nDescripción: ${offer.summary}` : '',
+    critical  ? `\nTecnologías críticas: ${critical}`    : '',
+    important ? `\nTecnologías importantes: ${important}` : '',
+    nice      ? `\nNice to have: ${nice}`                 : '',
+  ].join('').trim()
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 export default function CVMatcherPanel({ onClose }) {
   const { state }    = useStore()
+  const { user }     = useAuth()           // ← usuario autenticado para cargar sus ofertas
   const { t }        = useTranslation()   // hook de i18n → toda la UI responde al toggle ES/EN
   const fileInputRef = useRef(null)
 
@@ -211,6 +252,40 @@ export default function CVMatcherPanel({ onClose }) {
   const [result,    setResult]    = useState(null)
   // Tab por defecto: 'quickwins' — es lo más accionable para el usuario
   const [activeTab, setActiveTab] = useState('quickwins')
+
+  // ── Estado del selector de ofertas guardadas ──────────────────────────
+  const [savedOffers,    setSavedOffers]    = useState([])
+  const [offersLoading,  setOffersLoading]  = useState(true)
+  const [selectedOfferId, setSelectedOfferId] = useState(null)
+
+  // ── Carga de ofertas guardadas desde Supabase ─────────────────────────
+  /**
+   * Se ejecuta una sola vez al montar el panel.
+   * Carga las ofertas del usuario usando loadOffers(userId) de db.js.
+   *
+   * ¿Por qué no leerlas del store?
+   * Las saved_offers NO están en el store global (solo el rawOffers crudo
+   * del onboarding vive ahí). Las ofertas analizadas viven en Supabase y
+   * se cargan bajo demanda desde los componentes que las necesitan.
+   */
+  useEffect(() => {
+    if (!user?.id) { setOffersLoading(false); return }
+    loadOffers(user.id)
+      .then(offers => setSavedOffers(offers))
+      .catch(() => setSavedOffers([]))
+      .finally(() => setOffersLoading(false))
+  }, [user?.id])
+
+  /**
+   * selectOffer — cuando el usuario elige una oferta guardada:
+   *   1. Marca cuál está seleccionada (para el estilo activo)
+   *   2. Reconstruye el texto del JD desde los datos estructurados
+   *   3. Pone ese texto en el textarea para que sea editable antes de analizar
+   */
+  function selectOffer(offer) {
+    setSelectedOfferId(offer.id)
+    setJobText(buildJobText(offer))
+  }
 
   // ── Labels de urgencia traducidos ────────────────────────────────────
   // Se calculan a partir de las keys del locale para que cambien con el idioma
@@ -684,19 +759,113 @@ Analyze the compatibility and return the complete JSON.`
             />
           </div>
 
-          {/* ── Sección 2: Oferta ── */}
+          {/* ── Sección 2: Oferta laboral ── */}
           <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)' }}>
-            <p style={{ fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: 11, color: 'var(--text)', margin: '0 0 4px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+            <p style={{ fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: 11, color: 'var(--text)', margin: '0 0 2px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
               {t('cvmatcher.section2')}
             </p>
-            <p style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--subtle)', margin: '0 0 8px' }}>
-              {jobText ? t('cvmatcher.jobPreloaded') : ''}
+            <p style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--subtle)', margin: '0 0 10px' }}>
+              {t('cvmatcher.offerPickerDesc')}
+            </p>
+
+            {/* ── Picker de ofertas guardadas ────────────────────────────────
+                Muestra las ofertas del usuario cargadas desde Supabase.
+                Cada card tiene: nombre + top topics como badges + botón "Usar esta".
+                Al seleccionar se reconstruye el JD y se pone en el textarea.
+                Si no hay ofertas o aún carga, muestra mensaje informativo. */}
+            {offersLoading ? (
+              <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)', padding: '8px 0', marginBottom: 10 }}>
+                ⏳ {t('cvmatcher.offerPickerLoading')}
+              </div>
+            ) : savedOffers.length === 0 ? (
+              <div style={{
+                padding: '10px 12px', background: 'var(--surface)',
+                border: '1px dashed var(--border)', borderRadius: 4, marginBottom: 10,
+              }}>
+                <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)', marginBottom: 3 }}>
+                  {t('cvmatcher.offerPickerEmpty')}
+                </div>
+                <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--muted)' }}>
+                  {t('cvmatcher.offerPickerEmptyHint')}
+                </div>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
+                {savedOffers.map(offer => {
+                  const isSelected = selectedOfferId === offer.id
+                  // Mostramos solo los topics críticos (tier 1) como preview del stack
+                  const criticalTopics = (offer.topics || [])
+                    .filter(tp => tp.tier === 1)
+                    .slice(0, 4)
+                  return (
+                    <div
+                      key={offer.id}
+                      style={{
+                        padding: '9px 11px',
+                        background: isSelected ? 'color-mix(in srgb, var(--primary) 8%, var(--surface))' : 'var(--surface)',
+                        border: `1px solid ${isSelected ? 'var(--primary)' : 'var(--border)'}`,
+                        borderLeft: `3px solid ${isSelected ? 'var(--primary)' : 'var(--border)'}`,
+                        borderRadius: 4,
+                        transition: 'all 0.15s',
+                        display: 'flex', alignItems: 'center', gap: 10,
+                      }}
+                    >
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        {/* Nombre de la oferta */}
+                        <div style={{ fontFamily: 'Syne, sans-serif', fontWeight: 700, fontSize: 12, color: 'var(--text)', marginBottom: 5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {offer.name}
+                        </div>
+                        {/* Badges de topics críticos — muestra el stack de un vistazo */}
+                        {criticalTopics.length > 0 && (
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                            {criticalTopics.map((tp, i) => (
+                              <span key={i} style={{
+                                padding: '1px 6px',
+                                background: 'rgba(245,158,11,0.1)', color: 'var(--primary)',
+                                border: '1px solid rgba(245,158,11,0.2)', borderRadius: 3,
+                                fontFamily: 'Space Mono, monospace', fontSize: 9,
+                              }}>
+                                {tp.name}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      {/* Botón de selección — "Usar esta" / "✓ Seleccionada" */}
+                      <button
+                        onClick={() => selectOffer(offer)}
+                        style={{
+                          padding: '5px 10px', flexShrink: 0,
+                          background: isSelected ? 'var(--primary)' : 'var(--card)',
+                          color: isSelected ? 'var(--bg)' : 'var(--subtle)',
+                          border: `1px solid ${isSelected ? 'var(--primary)' : 'var(--border)'}`,
+                          borderRadius: 3, cursor: 'pointer',
+                          fontFamily: 'Space Mono, monospace', fontSize: 9, fontWeight: 700,
+                          transition: 'all 0.15s', whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {isSelected ? t('cvmatcher.offerSelected') : t('cvmatcher.offerSelect')}
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
+            {/* ── Textarea manual — siempre visible ──────────────────────────
+                Si el usuario seleccionó una oferta, muestra el JD reconstruido
+                (editable antes de analizar). Si no seleccionó nada, es el campo
+                libre de siempre. Así el usuario puede ajustar el texto si quiere. */}
+            <p style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--subtle)', margin: '0 0 6px' }}>
+              {selectedOfferId
+                ? t('cvmatcher.offerFromSaved')
+                : savedOffers.length > 0 ? t('cvmatcher.offerPasteManual') : ''}
             </p>
             <textarea
               value={jobText}
-              onChange={e => setJobText(e.target.value)}
+              onChange={e => { setJobText(e.target.value); setSelectedOfferId(null) }}
               placeholder={t('cvmatcher.jobPlaceholder')}
-              rows={5}
+              rows={selectedOfferId ? 4 : 5}
               style={{
                 width: '100%', background: 'var(--surface)', border: '1px solid var(--border)',
                 borderRadius: 4, color: 'var(--text)', fontFamily: 'Space Mono, monospace',
@@ -743,29 +912,40 @@ Analyze the compatibility and return the complete JSON.`
           {/* ── Resultados ── */}
           {result && (
             <>
-              {/* Score global + breakdown */}
-              <div style={{ margin: '0 20px 14px', padding: '14px 16px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 4 }}>
+              {/* ── Score global + breakdown ──────────────────────────────
+                  Mejora visual (mar 2026): borde izquierdo con el color del score
+                  para que el veredicto sea visualmente inmediato al ver el panel. */}
+              <div style={{
+                margin: '0 20px 14px', padding: '14px 16px',
+                background: 'var(--surface)',
+                border: '1px solid var(--border)',
+                borderLeft: `4px solid ${scoreColor(result.compatibility_score)}`,
+                borderRadius: 4,
+              }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 12 }}>
+                  {/* Número de score grande — color semáforo */}
                   <div style={{ textAlign: 'center', flexShrink: 0 }}>
-                    <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 40, fontWeight: 700, color: scoreColor(result.compatibility_score), lineHeight: 1 }}>
+                    <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 44, fontWeight: 700, color: scoreColor(result.compatibility_score), lineHeight: 1 }}>
                       {result.compatibility_score}
                     </div>
                     <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--subtle)', marginTop: 1 }}>/ 100</div>
                   </div>
                   <div style={{ flex: 1 }}>
+                    {/* Badge de nivel: ALTO / MEDIO / BAJO MATCH */}
                     <div style={{
-                      display: 'inline-block', padding: '2px 8px',
+                      display: 'inline-block', padding: '3px 10px',
                       background: `${scoreColor(result.compatibility_score)}22`,
                       color: scoreColor(result.compatibility_score),
-                      border: `1px solid ${scoreColor(result.compatibility_score)}44`,
+                      border: `1px solid ${scoreColor(result.compatibility_score)}55`,
                       borderRadius: 3, fontFamily: 'Space Mono, monospace',
-                      fontSize: 9, fontWeight: 700, letterSpacing: '0.08em', marginBottom: 6,
+                      fontSize: 9, fontWeight: 700, letterSpacing: '0.08em', marginBottom: 8,
                     }}>
                       {result.compatibility_score >= 75 ? t('cvmatcher.highMatch')
                         : result.compatibility_score >= 50 ? t('cvmatcher.medMatch')
                         : t('cvmatcher.lowMatch')}
                     </div>
-                    <p style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--subtle)', margin: 0, lineHeight: 1.5 }}>
+                    {/* Veredicto textual de la IA */}
+                    <p style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--text)', margin: 0, lineHeight: 1.6 }}>
                       {result.verdict}
                     </p>
                   </div>

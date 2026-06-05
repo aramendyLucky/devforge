@@ -215,6 +215,9 @@ La tabla guarda `name`, `summary` y `topics` extraídos por la IA — **no el te
 ```
 devforge/
 │
+├── api/
+│   └── groq.js                # Vercel serverless function — proxy para Groq API (key server-side)
+│
 ├── public/                    # Assets estáticos (favicon, etc.)
 ├── supabase/
 │   └── schema.sql             # Schema completo de la DB — ejecutar en Supabase SQL Editor
@@ -505,6 +508,7 @@ La app está completamente traducida al español e inglés usando **react-i18nex
 - npm 9+
 - Una cuenta en [Supabase](https://supabase.com) (plan free funciona)
 - Una API key de [Groq](https://console.groq.com) (plan free funciona)
+- Vercel CLI para desarrollo local con IA: `npm install -g vercel`
 
 ### Pasos
 
@@ -516,17 +520,22 @@ cd devforge
 # 2. Instalar dependencias
 npm install
 
-# 3. Configurar variables de entorno
+# 3. Instalar Vercel CLI (necesario para que la IA funcione en local)
+npm install -g vercel
+vercel login   # iniciá sesión con tu cuenta de Vercel
+
+# 4. Configurar variables de entorno
 cp .env.example .env
 # Editar .env con tus claves (ver sección 10)
 
-# 4. Crear el schema en Supabase
+# 5. Crear el schema en Supabase
 # → Ir a Supabase Dashboard → SQL Editor → New query
 # → Pegar el contenido de supabase/schema.sql → Run
 
-# 5. Iniciar el servidor de desarrollo
-npm run dev
-# La app estará en http://localhost:5174
+# 6. Iniciar el servidor de desarrollo
+npm run dev:full     # ← recomendado: Vercel dev (IA + app en http://localhost:3000)
+# o
+npm run dev          # Vite puro (http://localhost:5174) — las features de IA no funcionan
 
 # Para verificar el build de producción:
 npm run build
@@ -539,23 +548,34 @@ npm run build
 Crear un archivo `.env` en la raíz del proyecto con:
 
 ```env
+# ── Groq AI ─────────────────────────────────────────────────────
+# Encontrás tu API key en: https://console.groq.com/keys
+# IMPORTANTE: sin prefijo VITE_ — esta key vive solo en el servidor
+GROQ_API_KEY=gsk_xxxxxxxxxxxxxxxxxxxxxxxx
+
 # ── Supabase ────────────────────────────────────────────────────
 # Encontrás estos valores en: Supabase Dashboard → Settings → API
 VITE_SUPABASE_URL=https://xxxxxxxxxxx.supabase.co
 VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIs...
-
-# ── Groq AI ─────────────────────────────────────────────────────
-# Encontrás tu API key en: https://console.groq.com/keys
-VITE_GROQ_API_KEY=gsk_xxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
-> **Importante:** El prefijo `VITE_` es obligatorio en Vite para exponer
-> variables al cliente. La `anon key` de Supabase es segura en el cliente
-> porque RLS protege los datos a nivel de PostgreSQL.
+> **Importante — `GROQ_API_KEY` sin prefijo `VITE_`:**
+> La key de Groq es procesada por una Vercel Serverless Function (`api/groq.js`)
+> que actúa como proxy. El browser NUNCA ve la key — solo llama a `/api/groq`
+> sin credenciales. Esto evita que la key quede expuesta en el bundle JS.
 >
-> **Deuda técnica conocida:** La API key de Groq está expuesta en el cliente.
-> En producción multi-usuario, debe moverse a un backend que haga las
-> llamadas a Groq en nombre del usuario (FastAPI + Supabase Edge Functions).
+> **`VITE_SUPABASE_ANON_KEY` sí tiene prefijo `VITE_`** porque es una clave
+> pública por diseño — la seguridad real está en las RLS policies de Supabase.
+
+### Variables en Vercel (producción)
+
+En Vercel Dashboard → tu proyecto → Settings → Environment Variables, agregar:
+
+| Variable | Valor | Entornos |
+|---|---|---|
+| `GROQ_API_KEY` | `gsk_...` | Production, Preview, Development |
+| `VITE_SUPABASE_URL` | `https://xxx.supabase.co` | Production, Preview, Development |
+| `VITE_SUPABASE_ANON_KEY` | `eyJ...` | Production, Preview, Development |
 
 ---
 
@@ -662,6 +682,14 @@ Groq con llama-3.3-70b ofrece latencia muy baja y un tier free generoso para des
 
 Para producción con escala, se evaluará Claude API (Anthropic) por su superior razonamiento, contexto largo y mejor seguimiento de instrucciones de formato JSON.
 
+### ¿Por qué `api/groq.js` como proxy y no llamar a Groq directamente desde el browser?
+
+La API key de Groq con prefijo `VITE_` quedaría incrustada en el bundle JS público — cualquiera la vería en DevTools. Es una key facturable: si se filtra, el costo cae sobre el owner.
+
+La solución es una Vercel Serverless Function en `api/groq.js` que actúa como proxy transparente: el browser llama a `/api/groq` (sin credenciales), la función agrega la key desde `process.env.GROQ_API_KEY` (server-side) y reenvía a Groq. La key nunca sale del servidor.
+
+Para desarrollo local, `npm run dev:full` (Vercel CLI) replica este comportamiento exactamente — la misma función corre localmente.
+
 ### ¿Por qué el estado de ofertas (status, pins) va en localStorage y no en Supabase?
 
 Status y pins son preferencias personales del dispositivo, no datos de negocio. Criterios:
@@ -759,6 +787,7 @@ jsPDF permite generar el PDF 100% en el browser sin necesidad de un servidor. Pa
 | **FASE 2** | Mar 2026 | CV Matcher con análisis ATS, score breakdown, gaps, proyectos y quick wins |
 | **FASE 3** | Mar 2026 | Dashboard de gestión de ofertas: búsqueda, sort, estado, pins, uso, renombrado inline |
 | **FASE 4** | Mar 2026 | Wizard 3 pasos para entrevista simulada: StepBar animado, smart defaults de dificultad |
+| **SEGURIDAD** | Jun 2026 | Auditoría pre-push: .gitignore hardening + Groq API key movida a proxy serverless (`api/groq.js`) |
 
 ### Commits importantes por fase
 
@@ -791,7 +820,7 @@ git log --oneline --grep="fase4\|wizard\|stepbar" --regexp-ignore-case
 
 - [ ] **La entrevista en sí** — revisar la UX del flujo `/interview` con la nueva configuración del wizard. Las preguntas deben adaptarse mejor al tier de cada skill.
 - [ ] **Plan free vs. premium con Stripe** — limitar entrevistas/sesiones para free tier, desbloquear con suscripción mensual.
-- [ ] **Mover llamadas a Groq al backend** — actualmente la API key de Groq está en el cliente. En producción multi-usuario, esto debe moverse a un backend (FastAPI o Edge Functions de Supabase).
+- [x] **Mover llamadas a Groq al backend** — resuelto con proxy serverless `api/groq.js` en Vercel (Jun 2026). La key ya no está en el cliente.
 - [ ] **Dashboard v2 con gráficos** — evolución del score por tema en el tiempo con recharts o chart.js.
 
 ### Prioridad media
@@ -821,4 +850,4 @@ Analista de Sistemas | Backend Engineer — Instituto Sábato / CNEA (UNSAM)
 
 ---
 
-*Última actualización: marzo 2026 — FASE 4 completa*
+*Última actualización: junio 2026 — FASE 4 completa + hardening de seguridad*

@@ -1,20 +1,15 @@
 import { useState } from 'react'
 
-const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions'
-const MODEL    = 'llama-3.3-70b-versatile'
+const MODEL = 'llama-3.3-70b-versatile'
 
 async function callGroq(messages, systemPrompt = '') {
-  const apiKey = import.meta.env.VITE_GROQ_API_KEY
   const allMessages = systemPrompt
     ? [{ role: 'system', content: systemPrompt }, ...messages]
     : messages
 
-  const response = await fetch(GROQ_URL, {
+  const response = await fetch('/api/groq', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       model: MODEL,
       max_tokens: 1000,

@@ -38,8 +38,7 @@ import { extractTextFromFile, isFileSupported } from '../../lib/fileParser.js'
 import { useTranslation }              from 'react-i18next'
 
 // ── Constantes de Groq (mismo endpoint que useAI.js) ──────────────────────
-const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions'
-const MODEL    = 'llama-3.3-70b-versatile'
+const MODEL = 'llama-3.3-70b-versatile'
 
 /**
  * callGroq — llama a la API de Groq para el análisis de CV.
@@ -50,13 +49,9 @@ const MODEL    = 'llama-3.3-70b-versatile'
  * se cortaría y fallaría el parse.
  */
 async function callGroq(messages) {
-  const apiKey = import.meta.env.VITE_GROQ_API_KEY
-  const response = await fetch(GROQ_URL, {
+  const response = await fetch('/api/groq', {
     method: 'POST',
-    headers: {
-      'Content-Type':  'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ model: MODEL, max_tokens: 2500, messages }),
   })
   if (!response.ok) throw new Error(`Groq error: ${response.status}`)

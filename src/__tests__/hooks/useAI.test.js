@@ -88,7 +88,7 @@ describe('useAI', () => {
       const [url, options] = global.fetch.mock.calls[0]
 
       // Verificamos la URL de Groq
-      expect(url).toBe('https://api.groq.com/openai/v1/chat/completions')
+      expect(url).toBe('/api/groq')
       // Verificamos el método POST
       expect(options.method).toBe('POST')
       // Verificamos que Content-Type es JSON

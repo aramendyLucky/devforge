@@ -18,8 +18,7 @@ import { TOPICS } from '../../data/topics.js'
 import { loadOffers } from '../../lib/db.js'
 import { supabase } from '../../lib/supabase.js'
 
-const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions'
-const MODEL    = 'llama-3.3-70b-versatile'
+const MODEL = 'llama-3.3-70b-versatile'
 
 const TIER_LABEL = { 1: 'Crítico', 2: 'Importante', 3: 'Diferenciador' }
 
@@ -30,8 +29,6 @@ const TIER_LABEL = { 1: 'Crítico', 2: 'Importante', 3: 'Diferenciador' }
  * conceptos clave con ejemplos, 3 ejercicios graduados y milestones por nivel.
  */
 async function generateRoadmapContent(userName, topics, progress, extractedTopics) {
-  const apiKey = import.meta.env.VITE_GROQ_API_KEY
-
   const topicsSummary = topics.map(t => {
     const p        = progress[t.id]
     const score    = p?.lastScore ?? null
@@ -145,12 +142,9 @@ INSTRUCCIONES DE PERSONALIZACIÓN:
 
 Incluí los ${topics.length} temas sin excepción.`
 
-  const response = await fetch(GROQ_URL, {
+  const response = await fetch('/api/groq', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       model:      MODEL,
       max_tokens: 16000,   // 8k era insuficiente para 13+ temas con contenido profundo → truncaba el JSON

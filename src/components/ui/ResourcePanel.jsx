@@ -45,8 +45,7 @@ import { TOPICS }              from '../../data/topics.js'
 import { RoadmapPanelWithStore } from './RoadmapPanel.jsx'
 
 // ─── Constantes de la API de Groq ─────────────────────────────────────────
-const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions'
-const MODEL    = 'llama-3.3-70b-versatile'
+const MODEL = 'llama-3.3-70b-versatile'
 
 // ─── Íconos y colores por tipo de recurso ────────────────────────────────
 // Estos no se traducen: son íconos universales y clasificaciones técnicas.
@@ -71,13 +70,9 @@ const TYPE_COLORS = {
  * @returns {Promise<Array>} — array de recursos
  */
 async function fetchResources(topicName, topicDesc) {
-  const apiKey = import.meta.env.VITE_GROQ_API_KEY
-  const response = await fetch(GROQ_URL, {
+  const response = await fetch('/api/groq', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       model: MODEL,
       max_tokens: 1000,

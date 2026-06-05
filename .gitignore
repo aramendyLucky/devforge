@@ -5,6 +5,15 @@ node_modules/
 .env
 .env.local
 .env.*.local
+.env.production
+.env.staging
+.env.development
+!.env.example
+
+# Credenciales y certificados
+*.pem
+*.key
+*.p12
 
 # Build
 dist/
@@ -31,6 +40,9 @@ Thumbs.db
 .claude/
 .playwright-mcp/
 
+# Deploy
+.vercel/
+
 # Archivos de debug/test temporales
 analysis-result.png
 create-env.js
@@ -39,6 +51,5 @@ forgot-password.png
 interview-setup.png
 linkedin-blocked.png
 offer-saved.png
+cvmatcher-english.png
 test-api.js
-
-.vercel
